@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build
+.next/
+
+# data
+data/
+*.db
+
+# environment
+.env.local
+.env.production
+
+# logs
+logs/
+
+# misc
+.DS_Store
