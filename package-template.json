@@ -1,0 +1,12 @@
+{
+  "name": "nightshift-ui-template",
+  "version": "1.0.0",
+  "description": "Nightshift v1 dark UI template — modern chatbot + workspace interface with glassmorphism, outline elements, and premium dark theme. Reusable for any AI/SaaS product.",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "note": "Copy dependencies from the original package.json. Key UI deps: next, react, tailwindcss, framer-motion, lucide-react, clsx"
+}
