@@ -5,6 +5,7 @@ interface Conversation {
   id: string;
   title: string | null;
   preview: string | null;
+  todos: string | null;
   updated_at: string;
 }
 
@@ -13,6 +14,7 @@ interface Message {
   role: string;
   content: string;
   status: string;
+  metadata: string | null;
 }
 
 export const chatRouter = router({
@@ -31,7 +33,7 @@ export const chatRouter = router({
     .query(({ ctx, input }) => {
       const conversation = ctx.db
         .prepare(
-          "SELECT id, title, preview, updated_at FROM conversations WHERE id = ? AND user_id = ?"
+          "SELECT id, title, preview, todos, updated_at FROM conversations WHERE id = ? AND user_id = ?"
         )
         .get(input.id, ctx.userId) as Conversation | undefined;
 
@@ -39,7 +41,7 @@ export const chatRouter = router({
 
       const messages = ctx.db
         .prepare(
-          "SELECT id, role, content, status FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+          "SELECT id, role, content, status, metadata FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
         )
         .all(input.id) as Message[];
 

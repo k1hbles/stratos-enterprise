@@ -260,6 +260,7 @@ function MobileConversationInner({ id }: { id: string }) {
   const router = useRouter();
   const urlMessage = searchParams.get('message');
   const urlMode = searchParams.get('mode');
+  const urlFileIds = searchParams.get('fileIds');
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [convTitle, setConvTitle] = useState<string | null>(null);
@@ -272,6 +273,7 @@ function MobileConversationInner({ id }: { id: string }) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [previewFile, setPreviewFile] = useState<TaskFile | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ src: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -327,6 +329,7 @@ function MobileConversationInner({ id }: { id: string }) {
           const params = new URLSearchParams();
           if (urlMessage) params.set('message', urlMessage);
           if (urlMode) params.set('mode', urlMode);
+          if (urlFileIds) params.set('fileIds', urlFileIds);
           const qs = params.toString();
           router.replace(`/m/chat/${data.id}${qs ? `?${qs}` : ''}`);
         })
@@ -357,9 +360,20 @@ function MobileConversationInner({ id }: { id: string }) {
                 content: m.content,
                 raw: meta?.raw ?? m.content ?? '',
                 file: meta?.file ? { fileName: meta.file.name, downloadUrl: meta.file.url, fileSize: meta.file.size ?? 0 } : undefined,
+                attachments: meta?.attachments?.map((a: { mediaType: string; name: string; data: string }) => ({
+                  data: a.data,
+                  mediaType: a.mediaType,
+                  type: a.mediaType?.startsWith('image/') ? 'image' as const : 'file' as const,
+                  name: a.name,
+                  size: 0,
+                })) ?? undefined,
               };
             })
           );
+        }
+        // Restore todos from conversation
+        if (data.todos) {
+          try { setTodos(JSON.parse(data.todos)); } catch { /* ignore */ }
         }
         setLoaded(true);
       })
@@ -371,7 +385,17 @@ function MobileConversationInner({ id }: { id: string }) {
     if (!loaded || autoSentRef.current || isStreaming) return;
     if (!urlMessage) return;
     autoSentRef.current = true;
-    handleSend(urlMessage);
+    const fileIds = urlFileIds ? urlFileIds.split(',').filter(Boolean) : undefined;
+    // Read and clear any pending attachments stored by the homepage before navigation
+    let pendingAttachments: Attachment[] | undefined;
+    try {
+      const raw = sessionStorage.getItem('pendingAttachments');
+      if (raw) {
+        pendingAttachments = JSON.parse(raw) as Attachment[];
+        sessionStorage.removeItem('pendingAttachments');
+      }
+    } catch { /* ignore parse errors */ }
+    handleSend(urlMessage, fileIds, pendingAttachments);
     // Clear URL params to prevent re-send on reload
     router.replace(`/m/chat/${id}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -435,10 +459,10 @@ function MobileConversationInner({ id }: { id: string }) {
   };
 
   /* Send message — all requests go through OpenClaw (/api/chat) */
-  const handleSend = async (content?: string) => {
+  const handleSend = async (content?: string, fileIds?: string[], extraAttachments?: Attachment[]) => {
     const text = (content ?? input).trim();
-    const currentAttachments = content ? [] : attachments; // programmatic sends ignore input attachments
-    if ((!text && currentAttachments.length === 0) || isStreaming) return;
+    const currentAttachments = extraAttachments ?? (content ? [] : attachments); // programmatic sends ignore input attachments
+    if ((!text && currentAttachments.length === 0 && !fileIds?.length) || isStreaming) return;
     if (!content) {
       setInput('');
       setAttachments([]);
@@ -475,6 +499,7 @@ function MobileConversationInner({ id }: { id: string }) {
           conversationId: id,
           message: text || (currentAttachments.length > 0 ? 'What do you see in this image?' : ''),
           mode: selectedChip ? (selectedChip === 'Deep Research' ? 'openclaw' : 'auto') : 'auto',
+          fileIds: fileIds?.length ? fileIds : undefined,
           attachments: currentAttachments.length > 0
             ? currentAttachments.map((a) => ({ data: a.data, mediaType: a.mediaType, name: a.name }))
             : undefined,
@@ -666,10 +691,10 @@ function MobileConversationInner({ id }: { id: string }) {
                               key={i}
                               src={`data:${att.mediaType};base64,${att.data}`}
                               alt={att.name}
-                              className="w-16 h-16 object-cover rounded-xl"
+                              className="w-16 h-16 object-cover rounded-lg"
                             />
                           ) : (
-                            <div key={i} className="flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-xl px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)]">
+                            <div key={i} className="flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)]">
                               <FileIcon size={13} />
                               <span className="truncate max-w-[100px]">{att.name}</span>
                             </div>
@@ -891,10 +916,11 @@ function MobileConversationInner({ id }: { id: string }) {
                     <img
                       src={`data:${att.mediaType};base64,${att.data}`}
                       alt={att.name}
-                      className="w-[72px] h-[72px] object-cover rounded-xl"
+                      className="w-[72px] h-[72px] object-cover rounded-lg cursor-pointer"
+                      onClick={() => setPreviewImage({ src: `data:${att.mediaType};base64,${att.data}`, name: att.name })}
                     />
                   ) : (
-                    <div className="w-[72px] h-[72px] flex flex-col items-center justify-center bg-[var(--bg-elevated)] rounded-xl gap-1">
+                    <div className="w-[72px] h-[72px] flex flex-col items-center justify-center bg-[var(--bg-elevated)] rounded-lg gap-1">
                       <FileIcon size={22} strokeWidth={1.5} className="text-[var(--text-secondary)]" />
                       <span className="text-[9px] text-[var(--text-placeholder)] px-1 text-center truncate w-full leading-tight">{att.name.slice(0, 12)}</span>
                     </div>
@@ -958,6 +984,28 @@ function MobileConversationInner({ id }: { id: string }) {
       {/* File preview overlay */}
       {previewFile && (
         <FilePreviewOverlay file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
+
+      {/* Attachment image lightbox */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white p-2"
+            onClick={() => setPreviewImage(null)}
+          >
+            <X size={24} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewImage.src}
+            alt={previewImage.name}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {/* Files overlay */}
