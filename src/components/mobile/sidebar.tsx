@@ -45,76 +45,73 @@ function getIconForTitle(title: string | null) {
   return undefined;
 }
 
-/* ─── Context Menu ───────────────────────────────────────── */
+/* ─── iOS Context Menu Overlay ───────────────────────────── */
 
-function ContextMenu({
-  x,
-  y,
+function IOSContextMenu({
+  title,
+  rect,
   onRename,
   onMultiSelect,
   onPin,
   onDelete,
   onClose,
 }: {
-  x: number;
-  y: number;
+  title: string;
+  rect: DOMRect;
   onRename: () => void;
   onMultiSelect: () => void;
   onPin: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent | TouchEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('touchstart', handler);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('touchstart', handler);
-    };
-  }, [onClose]);
-
-  const menuStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: Math.min(x, 180),
-    top: y,
-    zIndex: 100,
-  };
-
   const items = [
-    { label: 'Rename', icon: <Pencil size={18} />, action: onRename, danger: false },
-    { label: 'Multi-select', icon: <ListFilter size={18} />, action: onMultiSelect, danger: false },
-    { label: 'Pin to top', icon: <ArrowUpFromDot size={18} />, action: onPin, danger: false },
-    { label: 'Delete', icon: <Trash2 size={18} />, action: onDelete, danger: true },
+    { label: 'Rename',       icon: <Pencil size={18} />,         action: onRename,      danger: false },
+    { label: 'Multi-select', icon: <ListFilter size={18} />,     action: onMultiSelect, danger: false },
+    { label: 'Pin to top',   icon: <ArrowUpFromDot size={18} />, action: onPin,         danger: false },
+    { label: 'Delete',       icon: <Trash2 size={18} />,         action: onDelete,      danger: true  },
   ];
 
+  const nearBottom = rect.top > window.innerHeight - 250;
+  const positionStyle: React.CSSProperties = nearBottom
+    ? { bottom: window.innerHeight - rect.bottom }
+    : { top: rect.top };
+
   return (
-    <>
-      <div className="absolute inset-0 z-[90] bg-[var(--overlay)] backdrop-blur-md" onClick={onClose} />
-      <div ref={menuRef} style={menuStyle} className="z-[100] w-[240px] bg-[var(--sidebar-item-active)]/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl border border-[var(--border-subtle)]">
-        {items.map((item, i) => (
-          <button
-            key={item.label}
-            onClick={() => {
-              item.action();
-              onClose();
-            }}
-            className={`flex items-center justify-between w-full px-4 py-3.5 text-[16px] transition-colors active:bg-[var(--sidebar-item-hover)] ${
-              item.danger ? 'text-red-400' : 'text-[var(--text-primary)]'
-            } ${i < items.length - 1 ? 'border-b border-[var(--border-subtle)]' : ''}`}
-          >
-            <span>{item.label}</span>
-            <span className={item.danger ? 'text-red-400' : 'text-[var(--text-secondary)]'}>{item.icon}</span>
-          </button>
-        ))}
+    <div
+      className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className={`absolute flex ${nearBottom ? 'flex-col-reverse' : 'flex-col'} gap-2`}
+        style={{ left: rect.left, width: rect.width, ...positionStyle }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Title card — always sits over the original button */}
+        <div className="bg-[var(--bg-elevated)] px-4 py-3.5 rounded-2xl shadow-2xl shrink-0">
+          <span className="text-[var(--text-primary)] text-[15px] font-medium truncate block">{title}</span>
+        </div>
+
+        {/* Options card — drops down or pops up depending on flex direction */}
+        <div className="bg-[var(--bg-elevated)] rounded-2xl shadow-2xl overflow-hidden">
+          {items.map((item, i) => (
+            <div key={item.label}>
+              <button
+                className={`flex items-center justify-between w-full px-4 py-3.5 active:bg-[var(--sidebar-item-hover)] transition-colors ${
+                  item.danger ? 'text-[#ff453a]' : 'text-[var(--text-primary)]'
+                }`}
+                onClick={() => { item.action(); onClose(); }}
+              >
+                <span className="text-[16px]">{item.label}</span>
+                <span className={item.danger ? 'text-[#ff453a]' : 'text-[var(--text-secondary)]'}>{item.icon}</span>
+              </button>
+              {i < items.length - 1 && (
+                <div className="h-px bg-[var(--border-subtle)]" />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -171,6 +168,69 @@ function RenameDialog({
   );
 }
 
+/* ─── Conversation Item ──────────────────────────────────── */
+
+function ConversationItem({
+  conv,
+  multiSelect,
+  selected,
+  onNavigate,
+  onToggle,
+  onLongPress,
+}: {
+  conv: Conversation;
+  multiSelect: boolean;
+  selected: boolean;
+  onNavigate: () => void;
+  onToggle: () => void;
+  onLongPress: (id: string, rect: DOMRect) => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleStart = () => {
+    if (multiSelect || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    timerRef.current = setTimeout(() => {
+      onLongPress(conv.id, rect);
+    }, 500);
+  };
+
+  const handleEnd = () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (multiSelect || !buttonRef.current) return;
+    e.preventDefault();
+    const rect = buttonRef.current.getBoundingClientRect();
+    onLongPress(conv.id, rect);
+  };
+
+  return (
+    <button
+      ref={buttonRef}
+      onClick={() => { multiSelect ? onToggle() : onNavigate(); }}
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleStart}
+      onTouchEnd={handleEnd}
+      onTouchMove={handleEnd}
+      className="flex items-center gap-3 py-3 px-1 text-left transition-colors rounded-xl select-none"
+    >
+      {multiSelect && (
+        selected ? (
+          <div className="w-[22px] h-[22px] rounded-full bg-[#2196F3] flex items-center justify-center shrink-0">
+            <Check size={14} strokeWidth={2.5} className="text-white" />
+          </div>
+        ) : (
+          <div className="w-[22px] h-[22px] rounded-full border-2 border-[var(--text-placeholder)] shrink-0" />
+        )
+      )}
+      <span className="text-[16px] text-[var(--text-primary)] truncate">{conv.title || 'New Chat'}</span>
+    </button>
+  );
+}
+
 /* ─── Main Sidebar ───────────────────────────────────────── */
 
 export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onClose: () => void; onOpenSettings: () => void; onOpenGallery: () => void }) {
@@ -178,8 +238,7 @@ export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onCl
   const { resolvedTheme } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; rect: DOMRect } | null>(null);
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -220,37 +279,9 @@ export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onCl
       )
     : conversations;
 
-  const getMenuPosition = useCallback((el: HTMLElement) => {
-    const scrollContainer = historyScrollRef.current;
-    if (!scrollContainer) return { x: 16, y: 0 };
-    const elRect = el.getBoundingClientRect();
-    const containerRect = scrollContainer.getBoundingClientRect();
-    return {
-      x: 16,
-      y: elRect.bottom - containerRect.top + scrollContainer.scrollTop + 4,
-    };
+  const handleLongPress = useCallback((id: string, rect: DOMRect) => {
+    setContextMenu({ id, rect });
   }, []);
-
-  const handleTouchStart = useCallback((conv: Conversation, e: React.TouchEvent) => {
-    const el = e.currentTarget as HTMLElement;
-    longPressTimer.current = setTimeout(() => {
-      const pos = getMenuPosition(el);
-      setContextMenu({ id: conv.id, ...pos });
-    }, 500);
-  }, [getMenuPosition]);
-
-  const handleTouchEnd = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }, []);
-
-  const handleContextMenuEvent = useCallback((conv: Conversation, e: React.MouseEvent) => {
-    e.preventDefault();
-    const pos = getMenuPosition(e.currentTarget as HTMLElement);
-    setContextMenu({ id: conv.id, ...pos });
-  }, [getMenuPosition]);
 
   const handleRename = useCallback((conv: Conversation) => { setRenaming(conv); }, []);
 
@@ -434,50 +465,20 @@ export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onCl
                   {searchActive ? 'No results' : 'No conversations yet'}
                 </p>
               ) : (
-                filteredConversations.map((c) => {
-                  const isContextTarget = contextMenu?.id === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        if (multiSelect) { toggleSelect(c.id); }
-                        else { navigate(`/m/chat/${c.id}`); }
-                      }}
-                      onContextMenu={(e) => { if (!multiSelect) handleContextMenuEvent(c, e); }}
-                      onTouchStart={(e) => { if (!multiSelect) handleTouchStart(c, e); }}
-                      onTouchEnd={handleTouchEnd}
-                      onTouchMove={handleTouchEnd}
-                      className={`flex items-center gap-3 py-3 px-1 text-left transition-colors rounded-xl ${
-                        isContextTarget ? 'bg-[var(--sidebar-item-active)]/70 relative z-[95] shadow-lg px-3' : ''
-                      }`}
-                    >
-                      {multiSelect && (
-                        selected.has(c.id) ? (
-                          <div className="w-[22px] h-[22px] rounded-full bg-[#2196F3] flex items-center justify-center shrink-0">
-                            <Check size={14} strokeWidth={2.5} className="text-white" />
-                          </div>
-                        ) : (
-                          <div className="w-[22px] h-[22px] rounded-full border-2 border-[var(--text-placeholder)] shrink-0" />
-                        )
-                      )}
-                      <span className="text-[16px] text-[var(--text-primary)] truncate">{c.title || 'New Chat'}</span>
-                    </button>
-                  );
-                })
+                filteredConversations.map((c) => (
+                  <ConversationItem
+                    key={c.id}
+                    conv={c}
+                    multiSelect={multiSelect}
+                    selected={selected.has(c.id)}
+                    onNavigate={() => navigate(`/m/chat/${c.id}`)}
+                    onToggle={() => toggleSelect(c.id)}
+                    onLongPress={handleLongPress}
+                  />
+                ))
               )}
             </div>
 
-            {contextMenu && contextConv && (
-              <ContextMenu
-                x={contextMenu.x}
-                y={contextMenu.y}
-                onRename={() => handleRename(contextConv)}
-                onMultiSelect={() => { setMultiSelect(true); setSelected(new Set([contextConv.id])); }}
-                onPin={() => {}}
-                onDelete={() => handleDelete([contextConv.id])}
-                onClose={() => setContextMenu(null)}
-              />
-            )}
           </div>
         </div>
       </div>
@@ -488,6 +489,19 @@ export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onCl
           initialTitle={renaming.title || 'New Chat'}
           onSave={handleRenameSave}
           onCancel={() => setRenaming(null)}
+        />
+      )}
+
+      {/* iOS Context Menu — fixed over everything */}
+      {contextMenu && contextConv && (
+        <IOSContextMenu
+          title={contextConv.title || 'New Chat'}
+          rect={contextMenu.rect}
+          onRename={() => handleRename(contextConv)}
+          onMultiSelect={() => { setMultiSelect(true); setSelected(new Set([contextConv.id])); }}
+          onPin={() => {}}
+          onDelete={() => handleDelete([contextConv.id])}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>
