@@ -7,6 +7,9 @@ export function runMigrations(db: Database.Database): void {
   try { db.exec("ALTER TABLE decisions ADD COLUMN status TEXT DEFAULT 'pending'"); } catch (_) {}
   try { db.exec("ALTER TABLE decisions ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))"); } catch (_) {}
   try { db.exec("ALTER TABLE conversations ADD COLUMN todos TEXT DEFAULT '[]'"); } catch (_) {}
+  try { db.exec("ALTER TABLE messages ADD COLUMN metadata TEXT"); } catch (_) {}
+  // Ensure sentinel row so chat-generated images (job_id='standalone') satisfy FK
+  try { db.exec("INSERT OR IGNORE INTO jobs (id, user_id, title, status) VALUES ('standalone','system','Standalone','complete')"); } catch (_) {}
 
   // Check if initial schema has already been created
   const tableExists = db

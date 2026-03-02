@@ -49,4 +49,5 @@ export type SSEEvent =
   | { type: "tool_result"; toolId: string; toolName: string; summary: string; expandData?: ExpandData }
   | { type: "file_ready"; file: ClawFile }
   | { type: "done"; file?: ClawFile }
+  | { type: "title_update"; title: string }
   | { type: "error"; message: string };

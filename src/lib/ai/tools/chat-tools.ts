@@ -630,17 +630,26 @@ export async function executeChatTool(
       onProgress?.(`<image_generating>`);
 
       try {
-        const { generateImage } = await import("@/lib/ai/tools/image-gen");
-        const result = await generateImage(prompt, size);
+        const { generateImageGemini } = await import("@/lib/ai/tools/image-gen-gemini");
+        const result = await generateImageGemini(prompt);
 
         if (!result) {
           onProgress?.(`</image_generating>`);
           onProgress?.(`\nImage generation failed. Please try again.`);
-          return JSON.stringify({ error: "Image generation unavailable (OPENAI_API_KEY not set or generation failed)" });
+          return JSON.stringify({ error: "Image generation unavailable (Gemini API key not set or generation failed)" });
         }
 
-        // Convert to base64 data URL — no auth issues, renders instantly
-        const base64DataUrl = `data:image/png;base64,${result.buffer.toString("base64")}`;
+        // Save to storage so gallery disk-backfill can find it
+        const { uploadFile } = await import("@/lib/storage");
+        const uuid = crypto.randomUUID();
+        const ext = result.mimeType === "image/jpeg" ? "jpg" : "png";
+        const filename = `image_${uuid.slice(0, 8)}.${ext}`;
+        const storagePath = `outputs/images/${uuid}/${filename}`;
+        uploadFile(storagePath, result.buffer);
+        const fileUrl = `/api/files/output?path=${encodeURIComponent(storagePath)}`;
+
+        // Convert to base64 data URL — renders instantly in chat
+        const base64DataUrl = `data:${result.mimeType};base64,${result.buffer.toString("base64")}`;
 
         // Persist to job_results for gallery
         const imageId = crypto.randomUUID();
@@ -653,10 +662,10 @@ export async function executeChatTool(
           `).run(
             imageId,
             context?.jobId ?? 'standalone',
-            `image_${Date.now()}.png`,
-            result.storagePath,
+            filename,
+            storagePath,
             result.buffer.length,
-            JSON.stringify({ prompt, model: 'dall-e-3', url: result.url })
+            JSON.stringify({ prompt, model: 'gemini-2.5-pro', url: fileUrl })
           );
         } catch (err) {
           console.error('[generate_image] DB persist failed:', err);
@@ -667,7 +676,7 @@ export async function executeChatTool(
         onProgress?.(`<image_result src="${base64DataUrl}" prompt="${prompt.replace(/"/g, "'")}" id="${imageId}">`);
         onProgress?.(`</image_result>`);
 
-        return JSON.stringify({ url: result.url, storagePath: result.storagePath, imageId });
+        return JSON.stringify({ url: fileUrl, storagePath, imageId });
       } catch (err) {
         onProgress?.(`</image_generating>`);
         return JSON.stringify({

@@ -19,6 +19,7 @@ import {
   Share2,
   SlidersHorizontal,
   Mic,
+  ArrowUp,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -480,114 +481,84 @@ function ImageLightbox({
   };
 
   return (
-    // Outer overlay — dark backdrop, centered
     <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0,0,0,0.85)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
+      className="fixed inset-0 z-[9999] flex flex-col bg-[var(--bg-page)]"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      {/* Inner modal container — constrained size */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: 800, maxHeight: '90vh', width: '90%',
-          background: '#111', borderRadius: 20,
-          overflow: 'hidden', position: 'relative',
-          display: 'flex', flexDirection: 'column',
-        }}
-      >
-        {/* Top bar */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 16px', flexShrink: 0,
-        }}>
-          <button onClick={onClose} style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <X size={18} color="white" />
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+        <button
+          onClick={onClose}
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+        >
+          <X size={18} />
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPrompt((p) => !p)}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+              showPrompt
+                ? 'bg-[var(--text-primary)] text-[var(--bg-page)]'
+                : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+            }`}
+          >
+            <Info size={18} />
           </button>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => setShowPrompt((p) => !p)} style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Info size={18} color="white" />
-            </button>
-            <button onClick={handleSave} style={{
-              padding: '8px 16px', borderRadius: 20,
-              background: 'rgba(255,255,255,0.1)', border: 'none',
-              cursor: 'pointer', color: 'white', fontSize: 14, fontWeight: 500,
-            }}>Save</button>
-            <button onClick={handleShare} style={{
-              padding: '8px 16px', borderRadius: 20,
-              background: 'white', border: 'none',
-              cursor: 'pointer', color: 'black', fontSize: 14, fontWeight: 500,
-            }}>Share</button>
-          </div>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 rounded-full bg-[var(--bg-elevated)] text-[var(--text-primary)] text-[14px] font-medium"
+          >
+            Save
+          </button>
+          <button
+            onClick={handleShare}
+            className="px-4 py-2 rounded-full bg-[var(--text-primary)] text-[var(--bg-page)] text-[14px] font-medium"
+          >
+            Share
+          </button>
         </div>
+      </div>
 
-        {/* Image */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={prompt} style={{
-            maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block',
-          }} />
-        </div>
+      {/* Image — fills remaining space */}
+      <div className="flex-1 flex items-center justify-center px-4 overflow-hidden relative">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src} alt={prompt}
+          className="max-w-full max-h-full object-contain rounded-xl"
+        />
 
         {/* Prompt info overlay */}
         {showPrompt && (
-          <div style={{
-            position: 'absolute', top: 60, left: 16, right: 16,
-            background: 'rgba(0,0,0,0.8)', borderRadius: 12, padding: '12px 14px',
-            backdropFilter: 'blur(12px)', zIndex: 20,
-          }}>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6, margin: 0 }}>
-              {prompt}
-            </p>
+          <div className="absolute inset-x-4 top-2 bg-[var(--bg-elevated)] rounded-2xl px-4 py-3 backdrop-blur-md z-10 border border-[var(--border-subtle)]">
+            <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed m-0">{prompt}</p>
           </div>
         )}
+      </div>
 
-        {/* Bottom edit bar */}
-        <div style={{ padding: '12px 16px', flexShrink: 0 }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: 'rgba(255,255,255,0.08)', borderRadius: 24,
-            padding: '10px 14px',
-            border: '1px solid rgba(255,255,255,0.1)',
-          }}>
-            <SlidersHorizontal size={18} color="rgba(255,255,255,0.5)" style={{ flexShrink: 0 }} />
-            <input
-              ref={inputRef}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEdit(); }
-              }}
-              placeholder="Describe edits"
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: 'white', fontSize: 15, caretColor: 'white',
-              }}
-            />
-            {editText.trim() ? (
-              <button onClick={handleEdit} style={{
-                width: 30, height: 30, borderRadius: '50%', background: 'white',
-                border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <span style={{ fontSize: 14, color: 'black', lineHeight: 1 }}>&#8593;</span>
-              </button>
-            ) : (
-              <Mic size={18} color="rgba(255,255,255,0.5)" style={{ flexShrink: 0 }} />
-            )}
-          </div>
+      {/* Bottom edit bar */}
+      <div className="px-4 pt-3 pb-2 shrink-0">
+        <div className="flex items-center gap-3 bg-[var(--bg-elevated)] rounded-2xl px-4 py-3 border border-[var(--border-strong)]">
+          <SlidersHorizontal size={18} className="text-[var(--text-placeholder)] shrink-0" />
+          <input
+            ref={inputRef}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEdit(); }
+            }}
+            placeholder="Describe edits"
+            className="flex-1 bg-transparent text-[var(--text-primary)] placeholder-[var(--text-placeholder)] text-[15px] outline-none no-focus-ring"
+          />
+          {editText.trim() ? (
+            <button
+              onClick={handleEdit}
+              className="w-8 h-8 rounded-full bg-[var(--text-primary)] flex items-center justify-center shrink-0"
+            >
+              <ArrowUp size={16} className="text-[var(--bg-page)]" />
+            </button>
+          ) : (
+            <Mic size={18} className="text-[var(--text-placeholder)] shrink-0" />
+          )}
         </div>
       </div>
     </div>
@@ -976,55 +947,5 @@ export function StreamingMessage({
   );
 }
 
-// ─── Sanitizers (used by SSE consumers to build safe raw XML strings) ─────────
-
-/** Escape a string for use inside an XML attribute (double-quoted) */
-export function sanitizeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/** Escape rogue closing tags in tool-block content to prevent premature block closure */
-export function sanitizeContent(s: string): string {
-  return s.replace(/<\/(tool|think|image_generating|image_result)>/g, '&lt;/$1&gt;');
-}
-
-// ─── Helpers (used by consumers to build the raw XML string) ──────────────────
-
-/** Map a backend toolName to the icon name used in <tool name="..."> */
-export function toolNameToIcon(toolName: string): string {
-  if (toolName === 'web_search') return 'search';
-  if (toolName === 'web_fetch')  return 'file';
-  if (toolName === 'generate_image') return 'image';
-  if (toolName === 'create_chart') return 'image';
-  if (toolName === 'execute_terminal') return 'terminal';
-  if (toolName === 'execute_python') return 'python';
-  if (toolName === 'write_todo' || toolName === 'read_todo') return 'todo';
-  if (toolName.startsWith('generate_')) return 'generate';
-  return 'default';
-}
-
-/** Build a human-readable label for a tool call from its name + args */
-export function toolCallLabel(toolName: string, args: Record<string, unknown>): string {
-  if (toolName === 'web_search') {
-    const q = String(args.query ?? '');
-    return q ? q.slice(0, 60) : 'Searching the web';
-  }
-  if (toolName === 'web_fetch') {
-    const url = String(args.url ?? '');
-    return url ? url.replace(/^https?:\/\//, '').slice(0, 60) : 'Reading page';
-  }
-  if (toolName === 'generate_presentation') return String(args.title ?? 'Generating presentation').slice(0, 60);
-  if (toolName === 'generate_spreadsheet')  return String(args.title ?? 'Generating spreadsheet').slice(0, 60);
-  if (toolName === 'generate_document')     return String(args.title ?? 'Generating document').slice(0, 60);
-  if (toolName === 'generate_report')       return String(args.title ?? 'Generating report').slice(0, 60);
-  if (toolName === 'generate_image')        return String(args.prompt ?? 'Generating image').slice(0, 60);
-  if (toolName === 'get_current_time')      return 'Getting current time';
-  if (toolName === 'write_todo') {
-    const items = args.items as string[] | undefined;
-    return items?.length ? `${items.length} task${items.length > 1 ? 's' : ''}` : 'Writing tasks';
-  }
-  if (toolName === 'read_todo')             return 'Reading task list';
-  if (toolName === 'execute_terminal')      return String(args.description ?? args.command ?? 'Running command').slice(0, 60);
-  if (toolName === 'execute_python')        return String(args.description ?? 'Running Python').slice(0, 60);
-  return toolName.replace(/_/g, ' ');
-}
+// ─── Re-export shared helpers (used by SSE consumers to build raw XML) ───────
+export { sanitizeAttr, sanitizeContent, toolNameToIcon, toolCallLabel } from '@/lib/ai/openclaw/stream-helpers';

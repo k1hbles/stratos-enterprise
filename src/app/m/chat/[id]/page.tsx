@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Globe,
   ArrowUp,
+  ArrowDown,
   X,
   ImageIcon,
   Paperclip,
@@ -252,6 +253,7 @@ function MobileConversationInner({ id }: { id: string }) {
   const urlMode = searchParams.get('mode');
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [convTitle, setConvTitle] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -267,22 +269,37 @@ function MobileConversationInner({ id }: { id: string }) {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState<string | null>(null);
   const [todos, setTodos] = useState<Array<{ text: string; done: boolean }>>([]);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoSentRef = useRef(false);
   const creatingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const userScrolledUpRef = useRef(false);
 
   const allFiles = messages.reduce<TaskFile[]>((acc, m) => {
     if (m.file) acc.push(m.file);
     return acc;
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const scrollToBottom = useCallback((force = false) => {
+    if (scrollRef.current && (!userScrolledUpRef.current || force)) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: force ? 'smooth' : 'auto' });
     }
+  }, []);
+
+  // Detect when user manually scrolls away from bottom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      userScrolledUpRef.current = distFromBottom > 80;
+      setShowScrollButton(distFromBottom > 100);
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
@@ -323,12 +340,16 @@ function MobileConversationInner({ id }: { id: string }) {
       .then((data) => {
         if (data.messages?.length) {
           setMessages(
-            data.messages.map((m: { id: string; role: string; content: string }) => ({
-              id: m.id,
-              role: m.role as 'user' | 'assistant',
-              content: m.content,
-              raw: m.content ?? '',
-            }))
+            data.messages.map((m: { id: string; role: string; content: string; metadata?: string }) => {
+              const meta = m.metadata ? (() => { try { return JSON.parse(m.metadata); } catch { return null; } })() : null;
+              return {
+                id: m.id,
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                raw: meta?.raw ?? m.content ?? '',
+                file: meta?.file ? { fileName: meta.file.name, downloadUrl: meta.file.url, fileSize: meta.file.size ?? 0 } : undefined,
+              };
+            })
           );
         }
         setLoaded(true);
@@ -383,6 +404,7 @@ function MobileConversationInner({ id }: { id: string }) {
     if (!text || isStreaming) return;
     if (!content) setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    userScrolledUpRef.current = false; // snap to bottom for new response
 
     const assistantId = `temp-assistant-${Date.now()}`;
     setMessages((prev) => [
@@ -484,6 +506,8 @@ function MobileConversationInner({ id }: { id: string }) {
                 file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0 },
               }));
             }
+          } else if (parsed.type === 'title_update' && parsed.title) {
+            setConvTitle(parsed.title);
           } else if (parsed.type === 'done') {
             const f = parsed.file;
             if (f) {
@@ -550,11 +574,17 @@ function MobileConversationInner({ id }: { id: string }) {
               <line x1="3" y1="15" x2="14" y2="15" />
             </svg>
           </button>
-          <span className="flex items-center gap-1 font-semibold text-lg">
-            ELK{' '}
-            <span className="text-[var(--text-subtle)] font-normal">Agent</span>
-            <ChevronRight className="w-4 h-4 text-[var(--text-subtle)]" />
-          </span>
+          {convTitle ? (
+            <span className="text-[16px] font-semibold text-[var(--text-primary)] truncate max-w-[200px]">
+              {convTitle}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 font-semibold text-lg">
+              ELK{' '}
+              <span className="text-[var(--text-subtle)] font-normal">Agent</span>
+              <ChevronRight className="w-4 h-4 text-[var(--text-subtle)]" />
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-4 text-[var(--text-secondary)]">
           <button onClick={handleNewChat}><SquarePen size={18} strokeWidth={2.5} /></button>
@@ -638,6 +668,20 @@ function MobileConversationInner({ id }: { id: string }) {
           </div>
         )}
       </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollButton && (
+        <button
+          onClick={() => {
+            userScrolledUpRef.current = false;
+            setShowScrollButton(false);
+            scrollToBottom(true);
+          }}
+          className="absolute bottom-36 right-4 w-9 h-9 bg-[var(--bg-elevated)] rounded-full flex items-center justify-center border border-[var(--border-strong)] shadow-lg z-30 text-[var(--text-secondary)]"
+        >
+          <ArrowDown size={18} />
+        </button>
+      )}
 
       {/* Hidden file inputs */}
       <input
@@ -751,7 +795,7 @@ function MobileConversationInner({ id }: { id: string }) {
         })()}
 
         {/* Input card — always the same shape */}
-        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-strong)] rounded-2xl overflow-hidden">
+        <div className="bg-[var(--bg-tertiary)] rounded-2xl overflow-hidden">
           {/* Thinking chip */}
           {selectedChip && (
             <div className="px-3 pt-2.5">
@@ -812,9 +856,8 @@ function MobileConversationInner({ id }: { id: string }) {
                 }
               }}
               placeholder="Ask ELK anything"
-              className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed"
+              className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed overflow-y-auto"
               style={{ maxHeight: 120 }}
-              disabled={isStreaming}
             />
             {input.trim() ? (
               <button

@@ -3,6 +3,8 @@ import { getSessionUserId } from "@/lib/auth/session";
 import { runOpenClaw } from "@/lib/ai/openclaw/engine";
 import type { LLMMessage } from "@/lib/ai/call";
 import type { SSEEvent } from "@/lib/ai/openclaw/types";
+import { sanitizeAttr, sanitizeContent, toolNameToIcon, toolCallLabel } from "@/lib/ai/openclaw/stream-helpers";
+import { generateTitle } from "@/app/api/conversations/[id]/title/route";
 
 type ChatMode = "auto" | "openclaw" | "council" | "fullstack";
 
@@ -77,14 +79,35 @@ export async function POST(req: Request) {
       messages[messages.length - 1] = { role: "user", content: enrichedMessage };
     }
 
-    if (messages.length === 1) {
-      const title = message.slice(0, 60) + (message.length > 60 ? "..." : "");
-      db.prepare("UPDATE conversations SET title = ? WHERE id = ?").run(title, conversationId);
-    }
+    // Title will be generated after first response completes (see below)
 
     const hasFiles = (fileIds?.length ?? 0) > 0;
     const encoder = new TextEncoder();
     const assistantMsgId = crypto.randomUUID();
+
+    /**
+     * Replace base64 data URLs in <image_result> tags with persistent file URLs.
+     * During streaming, images are emitted as base64 for instant display.
+     * Before saving to metadata, we swap them for /api/files/output URLs to
+     * avoid storing ~1-2MB of base64 per image in the JSON column.
+     */
+    const rewriteImageUrls = (raw: string): string => {
+      return raw.replace(
+        /<image_result\s+src="data:image\/[^"]*"\s+(prompt="[^"]*"\s+)?id="([^"]+)">/g,
+        (_match, promptAttr, id: string) => {
+          try {
+            const row = db
+              .prepare("SELECT storage_path FROM job_results WHERE id = ?")
+              .get(id) as { storage_path: string } | undefined;
+            if (row?.storage_path) {
+              const fileUrl = `/api/files/output?path=${encodeURIComponent(row.storage_path)}`;
+              return `<image_result src="${fileUrl}" ${promptAttr ?? ""}id="${id}">`;
+            }
+          } catch {}
+          return _match; // keep original if lookup fails
+        }
+      );
+    };
 
     // Use a TransformStream so we can pipe events as they arrive
     // without waiting for runOpenClaw to fully resolve.
@@ -103,6 +126,13 @@ export async function POST(req: Request) {
       let lastPersistTime = Date.now();
       const PERSIST_INTERVAL_MS = 2000;
 
+      // Server-side rawAccum mirrors the client-side XML accumulation
+      let rawAccum = "";
+      let imageTagBuffer = "";
+      let isImageTool = false;
+      const collectedSources: { url: string; title: string; domain: string; page_age: null; fetched: boolean }[] = [];
+      let collectedFile: { name: string; url: string; size: number } | undefined;
+
       db.prepare(
         "INSERT INTO messages (id, conversation_id, role, content, status) VALUES (?, ?, 'assistant', '', 'streaming')"
       ).run(assistantMsgId, conversationId);
@@ -111,14 +141,59 @@ export async function POST(req: Request) {
         const emit = (event: SSEEvent) => {
           send(event);
 
+          // Build rawAccum from all event types (mirrors client-side logic)
           if (event.type === "text") {
             streamedContent += event.text;
+            rawAccum += event.text;
             const now = Date.now();
             if (now - lastPersistTime >= PERSIST_INTERVAL_MS) {
               db.prepare("UPDATE messages SET content = ? WHERE id = ?")
                 .run(streamedContent, assistantMsgId);
               lastPersistTime = now;
             }
+          } else if (event.type === "tool_call" && event.toolName) {
+            isImageTool = event.toolName === "generate_image";
+            imageTagBuffer = "";
+            const iconName = toolNameToIcon(event.toolName);
+            const lbl = toolCallLabel(event.toolName, event.args ?? {});
+            rawAccum += `<tool name="${iconName}" label="${sanitizeAttr(lbl)}">`;
+          } else if (event.type === "tool_progress" && event.message) {
+            // Skip todos metadata
+            if (event.message.startsWith('{"__type":"todos_update"')) return;
+            const isImageTag = /^<\/?image_(generating|result)[\s>]/.test(event.message);
+            if (isImageTool && isImageTag) {
+              imageTagBuffer += `${event.message}\n`;
+            } else {
+              rawAccum += `${isImageTag ? event.message : sanitizeContent(event.message)}\n`;
+            }
+          } else if (event.type === "tool_result") {
+            rawAccum += "</tool>";
+            if (imageTagBuffer) {
+              rawAccum += imageTagBuffer;
+              imageTagBuffer = "";
+            }
+            isImageTool = false;
+            // Collect expandData for sources
+            const expandData = event.expandData;
+            if (expandData?.type === "search_results") {
+              for (const r of expandData.results) {
+                if (collectedSources.some((s) => s.url === r.url)) continue;
+                let domain = "";
+                try { domain = new URL(r.url).hostname.replace("www.", ""); } catch { /* ignore */ }
+                collectedSources.push({ url: r.url, title: r.title, domain, page_age: null, fetched: false });
+              }
+            } else if (expandData?.type === "fetch_result") {
+              const existing = collectedSources.find((s) => s.url === expandData.url);
+              if (existing) {
+                existing.fetched = true;
+              } else {
+                let domain = "";
+                try { domain = new URL(expandData.url).hostname.replace("www.", ""); } catch { /* ignore */ }
+                collectedSources.push({ url: expandData.url, title: expandData.title ?? "", domain, page_age: null, fetched: true });
+              }
+            }
+          } else if (event.type === "file_ready") {
+            collectedFile = { name: event.file.name, url: event.file.url, size: event.file.size ?? 0 };
           }
         };
 
@@ -133,21 +208,53 @@ export async function POST(req: Request) {
           emit
         );
 
+        // Capture file from result if not already captured via file_ready
+        if (!collectedFile && result.files[0]) {
+          const f = result.files[0];
+          collectedFile = { name: f.name, url: f.url, size: f.size ?? 0 };
+        }
+
+        // Build metadata JSON — rewrite base64 image URLs to persistent file URLs
+        const cleanedRaw = rewriteImageUrls(rawAccum);
+        const metadata: Record<string, unknown> = { raw: cleanedRaw };
+        if (collectedSources.length > 0) metadata.sources = collectedSources;
+        if (collectedFile) metadata.file = collectedFile;
+        const metadataJson = JSON.stringify(metadata);
+
         db.prepare(
-          "UPDATE messages SET content = ?, status = 'complete' WHERE id = ?"
-        ).run(result.fullResponse, assistantMsgId);
+          "UPDATE messages SET content = ?, metadata = ?, status = 'complete' WHERE id = ?"
+        ).run(result.fullResponse, metadataJson, assistantMsgId);
 
         db.prepare(
           "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?"
         ).run(conversationId);
+
+        // Generate title after first turn only — fire and await before [DONE]
+        if (messages.length === 1) {
+          try {
+            const title = await generateTitle(message, result.fullResponse);
+            if (title) {
+              db.prepare("UPDATE conversations SET title = ? WHERE id = ?")
+                .run(title, conversationId);
+              send({ type: "title_update", title });
+            }
+          } catch (err) {
+            console.error("[title_gen] Failed:", err);
+          }
+        }
 
         send({ type: "done", file: result.files[0] });
         writer.write(encoder.encode("data: [DONE]\n\n"));
       } catch (err) {
         console.error("Stream error:", err);
         try {
-          db.prepare("UPDATE messages SET content = ?, status = 'interrupted' WHERE id = ?")
-            .run(streamedContent, assistantMsgId);
+          // Persist what we have even on error — rewrite any completed images
+          const cleanedRaw = rewriteImageUrls(rawAccum);
+          const metadata: Record<string, unknown> = { raw: cleanedRaw };
+          if (collectedSources.length > 0) metadata.sources = collectedSources;
+          if (collectedFile) metadata.file = collectedFile;
+          db.prepare("UPDATE messages SET content = ?, metadata = ?, status = 'interrupted' WHERE id = ?")
+            .run(streamedContent, JSON.stringify(metadata), assistantMsgId);
         } catch {}
         const errorMessage = err instanceof Error ? err.message : "Stream error";
         send({ type: "error", message: errorMessage });
