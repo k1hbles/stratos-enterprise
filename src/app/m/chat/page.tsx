@@ -19,6 +19,7 @@ import {
   Paperclip,
   Camera,
   Atom,
+  FileIcon,
 } from 'lucide-react';
 import { MobileSidebar, MobileSettingsOverlay, MobileGalleryOverlay } from '@/components/mobile/sidebar';
 import { useTheme } from '@/components/theme-provider';
@@ -374,9 +375,9 @@ export default function MobileChatHome() {
                   disabled={sending}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm whitespace-nowrap transition-all duration-150"
                   style={{
-                    background: isSelected ? 'var(--thinking-pill-bg)' : 'var(--bg-secondary)',
-                    border: `1px solid ${isSelected ? 'transparent' : 'var(--border-strong)'}`,
-                    color: isSelected ? 'var(--thinking-pill-text)' : 'var(--text-primary)',
+                    background: isSelected ? 'var(--thinking-pill-bg)' : 'transparent',
+                    border: '1px solid var(--chip-border)',
+                    color: isSelected ? 'var(--thinking-pill-text)' : 'var(--text-secondary)',
                   }}
                 >
                   <Icon size={16} /> {chip.label}
@@ -404,7 +405,7 @@ export default function MobileChatHome() {
         />
 
         {/* Input card — always the same shape */}
-        <div className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] rounded-2xl overflow-hidden">
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--chatbox-bg)' }}>
 
           {/* Board pill — inside card at top */}
           {selectedMode === 'board' && (
@@ -429,8 +430,8 @@ export default function MobileChatHome() {
           {activeChip && selectedMode !== 'board' && (
             <>
               <div className="flex items-center gap-2 px-3.5 py-2.5">
-                <Atom size={16} className="text-blue-400 shrink-0" />
-                <span className="text-[14px] font-medium text-blue-400 flex-1">{activeChip.label}</span>
+                <Atom size={16} className="shrink-0" style={{ color: 'var(--thinking-pill-text)' }} />
+                <span className="text-[14px] font-medium flex-1" style={{ color: 'var(--thinking-pill-text)' }}>{activeChip.label}</span>
                 <button
                   onClick={() => setSelectedChip(null)}
                   className="text-[var(--text-placeholder)] hover:text-[var(--text-secondary)] transition-colors"

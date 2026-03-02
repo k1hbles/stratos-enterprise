@@ -73,7 +73,7 @@ export function MessageInput({ onSend, disabled = false, isStreaming = false, on
       style={{
         background: 'var(--chatbox-bg)',
         border: `1px solid ${isFocused ? 'var(--chatbox-border-focus)' : 'var(--chatbox-border)'}`,
-        borderRadius: '24px',
+        borderRadius: '16px',
         boxShadow: isFocused ? 'var(--chatbox-glow)' : 'none',
       }}
     >
