@@ -8,6 +8,7 @@ import { NUCLEAR_MODELS } from '@/lib/ai/model-router';
 
 export type LLMContentBlock =
   | { type: "text"; text: string }
+  | { type: "image"; mediaType: string; data: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
 
@@ -276,8 +277,19 @@ function toOpenAIMessages(
         }
       }
 
-      // Emit any text blocks as a user message
-      if (textBlocks.length > 0) {
+      // Build user message content — multimodal if images present
+      const imageBlocks = msg.content.filter((b) => b.type === "image");
+      if (imageBlocks.length > 0) {
+        const contentArr: unknown[] = [];
+        for (const block of imageBlocks) {
+          if (block.type === "image") {
+            contentArr.push({ type: "image_url", image_url: { url: `data:${block.mediaType};base64,${block.data}` } });
+          }
+        }
+        const textContent = textBlocks.map((b) => b.type === "text" ? b.text : "").join("");
+        if (textContent) contentArr.push({ type: "text", text: textContent });
+        if (contentArr.length > 0) out.push({ role: "user", content: contentArr });
+      } else if (textBlocks.length > 0) {
         const text = textBlocks.map((b) => b.type === "text" ? b.text : "").join("");
         if (text) out.push({ role: "user", content: text });
       }
@@ -401,6 +413,7 @@ function toAnthropicMessage(msg: LLMMessage): { role: string; content: unknown }
     role: msg.role,
     content: msg.content.map((block) => {
       if (block.type === "text") return { type: "text", text: block.text };
+      if (block.type === "image") return { type: "image", source: { type: "base64", media_type: block.mediaType, data: block.data } };
       if (block.type === "tool_use")
         return {
           type: "tool_use",

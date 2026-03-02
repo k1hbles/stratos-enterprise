@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import { getSessionUserId } from "@/lib/auth/session";
 import { runOpenClaw } from "@/lib/ai/openclaw/engine";
-import type { LLMMessage } from "@/lib/ai/call";
+import type { LLMMessage, LLMContentBlock } from "@/lib/ai/call";
 import type { SSEEvent } from "@/lib/ai/openclaw/types";
 import { sanitizeAttr, sanitizeContent, toolNameToIcon, toolCallLabel } from "@/lib/ai/openclaw/stream-helpers";
 import { generateTitle } from "@/app/api/conversations/[id]/title/route";
@@ -23,7 +23,8 @@ export async function POST(req: Request) {
     const userId = await getSessionUserId();
     if (!userId) return new Response("Unauthorized", { status: 401 });
 
-    const { conversationId, message, fileIds, mode: rawMode } = await req.json();
+    const { conversationId, message, fileIds, mode: rawMode, attachments } = await req.json();
+    type AttachmentInput = { data: string; mediaType: string; name: string };
     if (!conversationId || !message) {
       return new Response("Missing conversationId or message", { status: 400 });
     }
@@ -77,6 +78,19 @@ export async function POST(req: Request) {
 
     if (messages.length > 0 && enrichedMessage !== message) {
       messages[messages.length - 1] = { role: "user", content: enrichedMessage };
+    }
+
+    // Merge base64 image attachments into the last user message as multimodal content
+    if (Array.isArray(attachments) && attachments.length > 0 && messages.length > 0) {
+      const imageBlocks: LLMContentBlock[] = (attachments as AttachmentInput[])
+        .filter((a) => a.mediaType?.startsWith("image/"))
+        .map((a) => ({ type: "image" as const, mediaType: a.mediaType, data: a.data }));
+      if (imageBlocks.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        const textContent = typeof lastMsg.content === "string" ? lastMsg.content : enrichedMessage;
+        const textBlock: LLMContentBlock = { type: "text" as const, text: textContent };
+        messages[messages.length - 1] = { role: "user", content: [...imageBlocks, textBlock] };
+      }
     }
 
     // Title will be generated after first response completes (see below)

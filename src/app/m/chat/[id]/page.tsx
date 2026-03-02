@@ -50,6 +50,14 @@ interface TaskFile {
   fileSize: number;
 }
 
+interface Attachment {
+  data: string;       // base64 (no data: prefix)
+  mediaType: string;
+  type: 'image' | 'file';
+  name: string;
+  size: number;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -58,6 +66,7 @@ interface Message {
   file?: TaskFile;
   streaming?: boolean;
   taskDone?: boolean;
+  attachments?: Attachment[];
 }
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -265,7 +274,7 @@ function MobileConversationInner({ id }: { id: string }) {
   const [previewFile, setPreviewFile] = useState<TaskFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState<string | null>(null);
   const [todos, setTodos] = useState<Array<{ text: string; done: boolean }>>([]);
@@ -385,11 +394,38 @@ function MobileConversationInner({ id }: { id: string }) {
     }
   };
 
+  const handleFileSelect = async (files: File[]) => {
+    try {
+      const newAtts = await Promise.all(files.map(async (f) => {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(f);
+        });
+        return {
+          data: base64,
+          mediaType: f.type || 'application/octet-stream',
+          type: (f.type.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+          name: f.name,
+          size: f.size,
+        };
+      }));
+      setAttachments((prev) => [...prev, ...newAtts]);
+    } catch (err) {
+      console.error('[handleFileSelect] Failed to read file:', err);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      setIsPlusMenuOpen(false);
-      setAttachedFiles((prev) => [...prev, ...Array.from(files)]);
+      setIsPlusMenuOpen(false); // close immediately (sync) before async reading
+      handleFileSelect(Array.from(files));
     }
     if (e.target) e.target.value = '';
   };
@@ -401,15 +437,19 @@ function MobileConversationInner({ id }: { id: string }) {
   /* Send message — all requests go through OpenClaw (/api/chat) */
   const handleSend = async (content?: string) => {
     const text = (content ?? input).trim();
-    if (!text || isStreaming) return;
-    if (!content) setInput('');
+    const currentAttachments = content ? [] : attachments; // programmatic sends ignore input attachments
+    if ((!text && currentAttachments.length === 0) || isStreaming) return;
+    if (!content) {
+      setInput('');
+      setAttachments([]);
+    }
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     userScrolledUpRef.current = false; // snap to bottom for new response
 
     const assistantId = `temp-assistant-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: `temp-${Date.now()}`, role: 'user', content: text, raw: '' },
+      { id: `temp-${Date.now()}`, role: 'user', content: text, raw: '', attachments: currentAttachments.length > 0 ? currentAttachments : undefined },
     ]);
     setIsStreaming(true);
     setMessages((prev) => [
@@ -431,7 +471,14 @@ function MobileConversationInner({ id }: { id: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ conversationId: id, message: text, mode: 'auto' }),
+        body: JSON.stringify({
+          conversationId: id,
+          message: text || (currentAttachments.length > 0 ? 'What do you see in this image?' : ''),
+          mode: selectedChip ? (selectedChip === 'Deep Research' ? 'openclaw' : 'auto') : 'auto',
+          attachments: currentAttachments.length > 0
+            ? currentAttachments.map((a) => ({ data: a.data, mediaType: a.mediaType, name: a.name }))
+            : undefined,
+        }),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
@@ -609,8 +656,32 @@ function MobileConversationInner({ id }: { id: string }) {
                     transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
                     className="flex justify-end"
                   >
-                    <div className="bg-[var(--user-bubble-bg)] text-[var(--user-bubble-text)] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] text-[16px] leading-relaxed">
-                      {msg.content}
+                    <div className="flex flex-col items-end gap-1.5 max-w-[85%]">
+                      {/* Image thumbnails */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 justify-end">
+                          {msg.attachments.map((att, i) => att.type === 'image' ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              key={i}
+                              src={`data:${att.mediaType};base64,${att.data}`}
+                              alt={att.name}
+                              className="w-16 h-16 object-cover rounded-xl"
+                            />
+                          ) : (
+                            <div key={i} className="flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-xl px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)]">
+                              <FileIcon size={13} />
+                              <span className="truncate max-w-[100px]">{att.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Text bubble */}
+                      {msg.content && (
+                        <div className="bg-[var(--user-bubble-bg)] text-[var(--user-bubble-text)] rounded-2xl rounded-tr-sm px-4 py-3 text-[16px] leading-relaxed">
+                          {msg.content}
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -795,11 +866,11 @@ function MobileConversationInner({ id }: { id: string }) {
         })()}
 
         {/* Input card — always the same shape */}
-        <div className="bg-[var(--bg-tertiary)] rounded-2xl overflow-hidden">
+        <div className="rounded-2xl overflow-hidden border" style={{ background: 'var(--chatbox-bg)', borderColor: 'var(--chatbox-border)' }}>
           {/* Thinking chip */}
           {selectedChip && (
             <div className="px-3 pt-2.5">
-              <div className="flex items-center gap-1 px-3 py-1 rounded-full w-max" style={{ background: 'var(--thinking-pill-bg)', color: 'var(--thinking-pill-text)' }}>
+              <div className="flex items-center gap-1 px-3 py-1 rounded-full w-max border" style={{ background: 'var(--thinking-pill-bg)', color: 'var(--thinking-pill-text)', borderColor: 'var(--thinking-pill-border)' }}>
                 <Atom className="w-4 h-4" />
                 <span className="text-sm font-medium">{selectedChip}</span>
                 <X
@@ -810,22 +881,31 @@ function MobileConversationInner({ id }: { id: string }) {
             </div>
           )}
 
-          {/* File chips */}
-          {attachedFiles.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
-              {attachedFiles.map((f, i) => (
-                <span
-                  key={`${f.name}-${i}`}
-                  className="inline-flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-full px-2.5 py-1 text-[12px] text-[var(--text-primary)]"
-                >
-                  {f.name.length > 18 ? f.name.slice(0, 15) + '...' : f.name}
+          {/* Attachment thumbnails preview row */}
+          {attachments.length > 0 && (
+            <div className="flex gap-2 px-3 pt-2.5 overflow-x-auto scrollbar-hide">
+              {attachments.map((att, i) => (
+                <div key={i} className="relative flex-shrink-0">
+                  {att.type === 'image' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`data:${att.mediaType};base64,${att.data}`}
+                      alt={att.name}
+                      className="w-[72px] h-[72px] object-cover rounded-xl"
+                    />
+                  ) : (
+                    <div className="w-[72px] h-[72px] flex flex-col items-center justify-center bg-[var(--bg-elevated)] rounded-xl gap-1">
+                      <FileIcon size={22} strokeWidth={1.5} className="text-[var(--text-secondary)]" />
+                      <span className="text-[9px] text-[var(--text-placeholder)] px-1 text-center truncate w-full leading-tight">{att.name.slice(0, 12)}</span>
+                    </div>
+                  )}
                   <button
-                    onClick={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="text-[var(--text-placeholder)] hover:text-[var(--text-primary)]"
+                    onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[var(--bg-page)] border border-[var(--border-strong)] rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   >
                     <X size={10} strokeWidth={2.5} />
                   </button>
-                </span>
+                </div>
               ))}
             </div>
           )}
@@ -859,7 +939,7 @@ function MobileConversationInner({ id }: { id: string }) {
               className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed overflow-y-auto"
               style={{ maxHeight: 120 }}
             />
-            {input.trim() ? (
+            {(input.trim() || attachments.length > 0) ? (
               <button
                 className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
                 onClick={() => handleSend()}

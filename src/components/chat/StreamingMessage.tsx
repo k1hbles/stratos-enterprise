@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   Search,
   FileText,
@@ -179,7 +179,7 @@ function parseStreamSegments(raw: string): Segment[] {
 // ─── TextContent — full markdown rendering (bullets, headings, tables) ────────
 
 function renderInline(s: string): React.ReactNode {
-  const parts = s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = s.split(/(\*\*[^*]+\*\*|`[^`]+`|https?:\/\/[^\s<>"',)\]]+)/g);
   if (parts.length === 1) return s;
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -194,6 +194,13 @@ function renderInline(s: string): React.ReactNode {
         >
           {part.slice(1, -1)}
         </code>
+      );
+    }
+    if (part.startsWith('http://') || part.startsWith('https://')) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: '#5c9dff', textDecoration: 'underline', wordBreak: 'break-all' }}>
+          {part}
+        </a>
       );
     }
     return part;
@@ -565,6 +572,62 @@ function ImageLightbox({
   );
 }
 
+// ─── LinkPreview — OG card shown below text containing a URL ─────────────────
+
+interface LinkPreviewData {
+  title: string;
+  description: string;
+  image: string;
+  domain: string;
+}
+
+const LinkPreview = memo(function LinkPreview({ url }: { url: string }) {
+  const [data, setData] = useState<LinkPreviewData | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.title) setData(d); })
+      .catch(() => {});
+  }, [url]);
+
+  if (!data) return null;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'flex', gap: 10, padding: '10px 12px',
+        borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(255,255,255,0.03)', textDecoration: 'none',
+        marginTop: 6, overflow: 'hidden',
+      }}
+    >
+      {data.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={data.image} alt="" style={{ width: 60, height: 48, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.title}</span>
+        {data.description && (
+          <span style={{ fontSize: 12, color: '#888', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {data.description}
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: '#555' }}>{data.domain}</span>
+      </div>
+    </a>
+  );
+});
+
+function extractUrls(text: string): string[] {
+  const urlRe = /https?:\/\/[^\s<>"',)\]]+/g;
+  const matches = Array.from(text.matchAll(urlRe)).map((m) => m[0]);
+  return [...new Set(matches)].slice(0, 3);
+}
+
 // ─── StreamBlock ──────────────────────────────────────────────────────────────
 
 const ACTION_LABELS: Record<string, string> = {
@@ -896,7 +959,13 @@ export function StreamingMessage({
       <div className="flex flex-col gap-1.5">
         {segments.map((seg, i) => {
           if (seg.type === 'text') {
-            return <StreamingChars key={i} text={seg.content} done={done} />;
+            const urls = done ? extractUrls(seg.content) : [];
+            return (
+              <div key={i}>
+                <StreamingChars text={seg.content} done={done} />
+                {urls.map((url) => <LinkPreview key={url} url={url} />)}
+              </div>
+            );
           }
           if (seg.type === 'think') {
             return (
