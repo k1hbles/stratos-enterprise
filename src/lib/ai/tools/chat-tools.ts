@@ -671,9 +671,10 @@ export async function executeChatTool(
           console.error('[generate_image] DB persist failed:', err);
         }
 
-        // Close shimmer and emit image block
+        // Close shimmer and emit image block — use persistent file URL
+        // (file is already saved synchronously above, so URL is immediately valid)
         onProgress?.(`</image_generating>`);
-        onProgress?.(`<image_result src="${base64DataUrl}" prompt="${prompt.replace(/"/g, "'")}" id="${imageId}">`);
+        onProgress?.(`<image_result src="${fileUrl}" prompt="${prompt.replace(/"/g, "'")}" id="${imageId}">`);
         onProgress?.(`</image_result>`);
 
         return JSON.stringify({ url: fileUrl, storagePath, imageId });

@@ -25,7 +25,8 @@ export async function POST(req: Request) {
 
     const { conversationId, message, fileIds, mode: rawMode, attachments } = await req.json();
     type AttachmentInput = { data: string; mediaType: string; name: string };
-    if (!conversationId || !message) {
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    if (!conversationId || (!message && !hasAttachments)) {
       return new Response("Missing conversationId or message", { status: 400 });
     }
 
@@ -60,11 +61,20 @@ export async function POST(req: Request) {
       }
     }
 
-    // Save user message
+    // Save user message (with attachment metadata if present)
     const msgId = crypto.randomUUID();
+    const userMetadata = hasAttachments
+      ? JSON.stringify({
+          attachments: (attachments as AttachmentInput[]).map((att) => ({
+            mediaType: att.mediaType,
+            name: att.name,
+            data: att.data,
+          })),
+        })
+      : null;
     db.prepare(
-      "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?)"
-    ).run(msgId, conversationId, message);
+      "INSERT INTO messages (id, conversation_id, role, content, metadata) VALUES (?, ?, 'user', ?, ?)"
+    ).run(msgId, conversationId, message || "[Image attached]", userMetadata);
 
     // Fetch conversation history
     const history = db
@@ -80,22 +90,35 @@ export async function POST(req: Request) {
       messages[messages.length - 1] = { role: "user", content: enrichedMessage };
     }
 
-    // Merge base64 image attachments into the last user message as multimodal content
-    if (Array.isArray(attachments) && attachments.length > 0 && messages.length > 0) {
-      const imageBlocks: LLMContentBlock[] = (attachments as AttachmentInput[])
+    // Merge attachments into the last user message as multimodal content
+    if (hasAttachments && messages.length > 0) {
+      const atts = attachments as AttachmentInput[];
+      const imageBlocks: LLMContentBlock[] = atts
         .filter((a) => a.mediaType?.startsWith("image/"))
         .map((a) => ({ type: "image" as const, mediaType: a.mediaType, data: a.data }));
+
+      // Append text descriptions of non-image files so the LLM knows about them
+      const fileDescriptions = atts
+        .filter((a) => !a.mediaType?.startsWith("image/"))
+        .map((a) => `[Attached file: ${a.name} (${a.mediaType || "unknown type"})]`)
+        .join("\n");
+
+      const lastMsg = messages[messages.length - 1];
+      const baseText = typeof lastMsg.content === "string" ? lastMsg.content : enrichedMessage;
+      const fullText = fileDescriptions ? `${baseText}\n\n${fileDescriptions}` : baseText;
+
       if (imageBlocks.length > 0) {
-        const lastMsg = messages[messages.length - 1];
-        const textContent = typeof lastMsg.content === "string" ? lastMsg.content : enrichedMessage;
-        const textBlock: LLMContentBlock = { type: "text" as const, text: textContent };
+        const textBlock: LLMContentBlock = { type: "text" as const, text: fullText };
         messages[messages.length - 1] = { role: "user", content: [...imageBlocks, textBlock] };
+      } else if (fileDescriptions) {
+        // No images — just append file descriptions to the text message
+        messages[messages.length - 1] = { role: "user", content: fullText };
       }
     }
 
     // Title will be generated after first response completes (see below)
 
-    const hasFiles = (fileIds?.length ?? 0) > 0;
+    const hasFiles = (fileIds?.length ?? 0) > 0 || (attachments?.length ?? 0) > 0;
     const encoder = new TextEncoder();
     const assistantMsgId = crypto.randomUUID();
 
@@ -187,6 +210,14 @@ export async function POST(req: Request) {
               imageTagBuffer = "";
             }
             isImageTool = false;
+            // Immediately checkpoint metadata after image generation so the image
+            // URL is persisted even if the stream is interrupted before the final save.
+            if (event.toolName === "generate_image") {
+              try {
+                db.prepare("UPDATE messages SET metadata = ? WHERE id = ?")
+                  .run(JSON.stringify({ raw: rawAccum, sources: collectedSources }), assistantMsgId);
+              } catch { /* non-critical */ }
+            }
             // Collect expandData for sources
             const expandData = event.expandData;
             if (expandData?.type === "search_results") {

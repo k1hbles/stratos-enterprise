@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Download, ArrowDown, ChevronDown, ChevronRight, Check, ClipboardList, Info, Share2, SlidersHorizontal } from 'lucide-react';
+import { X, Download, ArrowDown, ChevronDown, ChevronRight, Check, ClipboardList, Info, Share2, SlidersHorizontal, ImageIcon } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MessageBubble, type FileAttachment } from './message-bubble';
 import { MessageInput, type ChatMode } from './message-input';
@@ -377,6 +377,7 @@ function ImageResultDesktop({
   src: string; prompt: string; imageId: string; onEdit?: (text: string) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
   const [lightbox, setLightbox] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [editText, setEditText] = useState('');
@@ -437,17 +438,27 @@ function ImageResultDesktop({
         style={{
           borderRadius: 16, overflow: 'hidden',
           background: 'var(--surface-secondary)',
-          position: 'relative', cursor: 'pointer',
+          position: 'relative', cursor: error ? 'default' : 'pointer',
         }}
-        onClick={() => setLightbox(true)}
+        onClick={() => !error && setLightbox(true)}
       >
-        {!loaded && (
+        {!loaded && !error && (
           <div style={{
             position: 'absolute', inset: 0,
             background: 'var(--surface-secondary)',
             animation: 'dt-img-pulse 1.5s ease-in-out infinite',
             borderRadius: 16, minHeight: 200,
           }} />
+        )}
+        {error && (
+          <div style={{
+            minHeight: 200, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 8,
+            color: 'var(--text-tertiary)', borderRadius: 16,
+          }}>
+            <ImageIcon size={28} strokeWidth={1.5} />
+            <span style={{ fontSize: 13 }}>Image unavailable</span>
+          </div>
         )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -457,7 +468,7 @@ function ImageResultDesktop({
             opacity: loaded ? 1 : 0, transition: 'opacity 0.3s ease',
           }}
           onLoad={() => setLoaded(true)}
-          onError={() => console.error('[ImageResultDesktop] Failed to load')}
+          onError={() => { console.error('[ImageResultDesktop] Failed to load', src.slice(0, 80)); setError(true); }}
         />
       </div>
 
@@ -649,7 +660,38 @@ export function ConversationView({
   useEffect(() => {
     if (!initializedRef.current && initialMessages.length > 0) {
       initializedRef.current = true;
-      setMessages(initialMessages);
+      // Rehydrate raw + file from metadata JSON (persisted during streaming)
+      const rehydrated = initialMessages.map((m) => {
+        const metaStr = (m as unknown as { metadata?: string }).metadata;
+        if (!metaStr) return m;
+        try {
+          const meta = JSON.parse(metaStr);
+          const patched: Message = { ...m };
+          if (meta.raw) patched.raw = meta.raw;
+          if (meta.file) patched.file = { fileName: meta.file.name, downloadUrl: meta.file.url, fileSize: meta.file.size ?? 0 };
+          return patched;
+        } catch { return m; }
+      });
+      setMessages(rehydrated);
+      // Restore sources from metadata
+      const allSources: { url: string; title: string; domain: string; page_age: null; fetched: boolean }[] = [];
+      const seen = new Set<string>();
+      for (const m of initialMessages) {
+        const metaStr = (m as unknown as { metadata?: string }).metadata;
+        if (!metaStr) continue;
+        try {
+          const meta = JSON.parse(metaStr);
+          if (Array.isArray(meta.sources)) {
+            for (const s of meta.sources) {
+              if (!seen.has(s.url)) {
+                seen.add(s.url);
+                allSources.push(s);
+              }
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      if (allSources.length > 0) setSources(allSources);
     }
   }, [initialMessages]);
 

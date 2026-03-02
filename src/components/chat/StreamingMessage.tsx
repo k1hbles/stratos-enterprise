@@ -395,24 +395,40 @@ function ImageResult({
   src: string; prompt: string; imageId: string; onEdit?: (text: string) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   return (
     <>
       <div
-        onClick={() => setLightboxOpen(true)}
+        onClick={() => !error && setLightboxOpen(true)}
         style={{
           margin: '8px 0', maxWidth: 260, borderRadius: 16,
-          overflow: 'hidden', cursor: 'pointer',
+          overflow: 'hidden', cursor: error ? 'default' : 'pointer',
           background: 'rgba(255,255,255,0.04)',
         }}
       >
-        {!loaded && (
+        {!loaded && !error && (
           <div style={{
             width: '100%', paddingBottom: '100%',
             background: 'rgba(255,255,255,0.06)',
             animation: 'pulse 1.5s ease-in-out infinite',
           }} />
+        )}
+        {error && (
+          <div style={{
+            width: '100%', paddingBottom: '75%', position: 'relative',
+            background: 'rgba(255,255,255,0.04)',
+          }}>
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 6,
+              color: 'rgba(255,255,255,0.3)', fontSize: 12,
+            }}>
+              <ImageIcon size={24} strokeWidth={1.5} />
+              <span>Image unavailable</span>
+            </div>
+          </div>
         )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -422,7 +438,7 @@ function ImageResult({
             opacity: loaded ? 1 : 0, transition: 'opacity 0.3s ease',
           }}
           onLoad={() => setLoaded(true)}
-          onError={() => console.error('[ImageResult] Failed to load image')}
+          onError={() => { console.error('[ImageResult] Failed to load image', src.slice(0, 80)); setError(true); }}
         />
       </div>
 
@@ -769,8 +785,8 @@ function StreamBlock({
           alignItems: 'center',
           gap: 10,
           padding: '10px 12px',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.06)',
+          background: 'var(--action-bg)',
+          border: '1px solid var(--action-border)',
           borderRadius: items.length > 0 ? '14px 14px 0 0' : 14,
           cursor: 'pointer',
           textAlign: 'left',
@@ -778,14 +794,14 @@ function StreamBlock({
       >
         <BlockIcon name={name} type={type} isStreaming={isStreaming} />
 
-        <span style={{ fontSize: 14, fontWeight: 500, color: '#e0e0e0', flexShrink: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--action-label)', flexShrink: 0 }}>
           {isStreaming && type === 'think' ? 'Thinking...' : actionLabel}
         </span>
 
-        <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 13, flexShrink: 0 }}>|</span>
+        <span style={{ color: 'var(--action-separator)', fontSize: 13, flexShrink: 0 }}>|</span>
 
         <span style={{
-          fontSize: 14, color: '#888', flex: 1,
+          fontSize: 14, color: 'var(--action-text)', flex: 1,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {label || name}
@@ -818,11 +834,11 @@ function StreamBlock({
       {items.length > 0 && (
         <div style={{
           position: 'relative',
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          borderBottom: open ? 'none' : '1px solid rgba(255,255,255,0.06)',
+          borderLeft: '1px solid var(--action-border)',
+          borderRight: '1px solid var(--action-border)',
+          borderBottom: open ? 'none' : '1px solid var(--action-border)',
           borderRadius: open ? 0 : '0 0 14px 14px',
-          background: 'rgba(255,255,255,0.02)',
+          background: 'var(--action-bg)',
           paddingLeft: 44,
           paddingRight: 12,
           paddingTop: 4,
@@ -835,7 +851,7 @@ function StreamBlock({
             top: 0,
             bottom: 0,
             width: 1,
-            background: 'rgba(255,255,255,0.06)',
+            background: 'var(--action-border)',
           }} />
 
           {items.map((item, idx) => (
@@ -848,7 +864,7 @@ function StreamBlock({
                 gap: 8,
                 padding: '3px 0',
                 fontSize: 13,
-                color: '#888',
+                color: 'var(--action-text)',
               }}
             >
               {/* Dot on connector line */}
@@ -858,10 +874,10 @@ function StreamBlock({
                 width: 5,
                 height: 5,
                 borderRadius: '50%',
-                background: isStreaming && idx === items.length - 1 ? '#5c9dff' : 'rgba(255,255,255,0.15)',
+                background: isStreaming && idx === items.length - 1 ? '#5c9dff' : 'var(--action-dot)',
               }} />
               <span style={{ flex: 1 }}>{item}</span>
-              <ChevronRight size={11} strokeWidth={1.5} style={{ color: '#444', flexShrink: 0 }} />
+              <ChevronRight size={11} strokeWidth={1.5} style={{ color: 'var(--action-icon)', flexShrink: 0 }} />
             </div>
           ))}
         </div>
@@ -874,17 +890,17 @@ function StreamBlock({
             fontSize: 13,
             lineHeight: 1.6,
             padding: '8px 12px 10px',
-            borderLeft: '1px solid rgba(255,255,255,0.06)',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderLeft: '1px solid var(--action-border)',
+            borderRight: '1px solid var(--action-border)',
+            borderBottom: '1px solid var(--action-border)',
             borderRadius: '0 0 14px 14px',
-            background: 'rgba(255,255,255,0.02)',
+            background: 'var(--action-bg)',
           }}
         >
           {name === 'plan' ? (
             <PlanContent content={rawContent} />
           ) : (
-            <div style={{ color: '#666', whiteSpace: 'pre-wrap' }}>
+            <div style={{ color: 'var(--action-text)', whiteSpace: 'pre-wrap' }}>
               {rawContent}
             </div>
           )}
