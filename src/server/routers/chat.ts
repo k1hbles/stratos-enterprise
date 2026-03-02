@@ -12,6 +12,7 @@ interface Message {
   id: string;
   role: string;
   content: string;
+  status: string;
 }
 
 export const chatRouter = router({
@@ -38,7 +39,7 @@ export const chatRouter = router({
 
       const messages = ctx.db
         .prepare(
-          "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+          "SELECT id, role, content, status FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
         )
         .all(input.id) as Message[];
 

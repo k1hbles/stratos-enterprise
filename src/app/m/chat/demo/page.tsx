@@ -2,10 +2,8 @@
 
 import React, { useState } from 'react';
 import {
-  Menu,
   PlusCircle,
   ChevronRight,
-  Maximize2,
   ThumbsUp,
   ThumbsDown,
   Share,
@@ -98,26 +96,26 @@ function StepItem({
   isLast?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between p-2.5 hover:bg-[#27272a]/50 rounded-xl cursor-pointer relative">
+    <div className="flex items-center justify-between p-2.5 hover:bg-[var(--sidebar-item-hover)] rounded-xl cursor-pointer relative">
       <div className="flex items-center gap-3">
-        <div className="w-6 flex justify-center text-gray-400 relative">
+        <div className="w-6 flex justify-center text-[var(--text-subtle)] relative">
           {icon && icon}
-          {dot && <div className="w-1.5 h-1.5 bg-gray-500 rounded-full z-10" />}
+          {dot && <div className="w-1.5 h-1.5 bg-[var(--text-placeholder)] rounded-full z-10" />}
           {!isLast && (
-            <div className="absolute top-6 bottom-[-10px] left-1/2 -translate-x-1/2 w-[1px] bg-[#27272a]" />
+            <div className="absolute top-6 bottom-[-10px] left-1/2 -translate-x-1/2 w-[1px] bg-[var(--border-strong)]" />
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[15px] text-gray-300">{title}</span>
+          <span className="text-[15px] text-[var(--text-primary)]">{title}</span>
           {subtitle && (
             <>
-              <span className="text-gray-600">|</span>
-              <span className="text-[15px] text-gray-500 truncate max-w-[100px]">{subtitle}</span>
+              <span className="text-[var(--text-placeholder)]">|</span>
+              <span className="text-[15px] text-[var(--text-placeholder)] truncate max-w-[100px]">{subtitle}</span>
             </>
           )}
         </div>
       </div>
-      <ChevronRight size={18} className="text-gray-600" />
+      <ChevronRight size={18} className="text-[var(--text-placeholder)]" />
     </div>
   );
 }
@@ -132,9 +130,9 @@ function TableRow({
   isHeader?: boolean;
 }) {
   return (
-    <div className={`flex border-b border-[#27272a] last:border-0 ${isHeader ? 'bg-[#18181a]' : 'bg-[#121212]'}`}>
-      <div className="w-1/3 p-3.5 text-[15px] text-gray-300 border-r border-[#27272a]">{col1}</div>
-      <div className="w-2/3 p-3.5 text-[15px] text-gray-300">{col2}</div>
+    <div className={`flex border-b border-[var(--border-strong)] last:border-0 ${isHeader ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--content-card-bg)]'}`}>
+      <div className="w-1/3 p-3.5 text-[15px] text-[var(--text-primary)] border-r border-[var(--border-strong)]">{col1}</div>
+      <div className="w-2/3 p-3.5 text-[15px] text-[var(--text-primary)]">{col2}</div>
     </div>
   );
 }
@@ -142,13 +140,13 @@ function TableRow({
 function FileCard({ file }: { file: TaskFile }) {
   const Icon = getFileIcon(file.fileName);
   return (
-    <div className="bg-[#18181a] border border-[#27272a] rounded-2xl p-3.5 flex items-center gap-3.5">
-      <div className="bg-[#27272a] p-2.5 rounded-xl text-gray-300">
+    <div className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] rounded-2xl p-3.5 flex items-center gap-3.5">
+      <div className="bg-[var(--bg-elevated)] p-2.5 rounded-xl text-[var(--text-secondary)]">
         <Icon size={24} strokeWidth={1.5} />
       </div>
       <div className="flex flex-col overflow-hidden">
-        <span className="text-[15px] font-medium text-gray-200 truncate">{file.fileName}</span>
-        <span className="text-[13px] text-gray-500 mt-0.5">{formatFileSize(file.fileSize)}</span>
+        <span className="text-[15px] font-medium text-[var(--text-primary)] truncate">{file.fileName}</span>
+        <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">{formatFileSize(file.fileSize)}</span>
       </div>
     </div>
   );
@@ -157,40 +155,40 @@ function FileCard({ file }: { file: TaskFile }) {
 function FilesOverlay({ files, onClose }: { files: TaskFile[]; onClose: () => void }) {
   const totalSize = files.reduce((a, f) => a + f.fileSize, 0);
   return (
-    <div className="absolute inset-0 bg-[#121212] z-40 flex flex-col animate-slide-up rounded-t-3xl mt-12 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-[#27272a]">
-      <div className="flex flex-col items-center pt-3 pb-4 px-4 border-b border-[#1c1c1e]">
-        <div className="w-12 h-1.5 bg-[#2c2c2e] rounded-full mb-5 cursor-pointer" onClick={onClose} />
+    <div className="absolute inset-0 bg-[var(--content-card-bg)] z-40 flex flex-col animate-slide-up rounded-t-3xl mt-12 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-[var(--border-strong)]">
+      <div className="flex flex-col items-center pt-3 pb-4 px-4 border-b border-[var(--border-default)]">
+        <div className="w-12 h-1.5 bg-[var(--bg-elevated)] rounded-full mb-5 cursor-pointer" onClick={onClose} />
         <div className="flex items-center justify-between w-full">
           <div className="w-6" />
           <span className="font-medium text-[16px]">All files({files.length})</span>
-          <button className="text-gray-400 hover:text-white"><Download size={22} /></button>
+          <button className="text-[var(--text-subtle)] hover:text-[var(--text-primary)]"><Download size={22} /></button>
         </div>
       </div>
       <div className="p-4 flex flex-col gap-6 mt-2 overflow-y-auto scrollbar-hide">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Folder size={28} className="text-gray-500 fill-gray-500/20" strokeWidth={1.5} />
+            <Folder size={28} className="text-[var(--text-placeholder)] fill-[var(--text-placeholder)]/20" strokeWidth={1.5} />
             <div className="flex flex-col">
-              <span className="text-[16px] text-gray-200">output</span>
-              <span className="text-[13px] text-gray-500 mt-0.5">{formatFileSize(totalSize)}</span>
+              <span className="text-[16px] text-[var(--text-primary)]">output</span>
+              <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">{formatFileSize(totalSize)}</span>
             </div>
           </div>
-          <ChevronDown size={22} className="text-gray-500" />
+          <ChevronDown size={22} className="text-[var(--text-placeholder)]" />
         </div>
         {files.map((f) => {
           const Icon = getFileIcon(f.fileName);
           return (
             <div key={f.fileName} className="flex items-center justify-between pl-11">
               <div className="flex items-center gap-4">
-                <div className="border border-gray-600 rounded-lg p-1.5 text-gray-400">
+                <div className="border border-[var(--text-placeholder)] rounded-lg p-1.5 text-[var(--text-subtle)]">
                   <Icon size={20} strokeWidth={1.5} />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[16px] text-gray-200">{f.fileName}</span>
-                  <span className="text-[13px] text-gray-500 mt-0.5">{formatFileSize(f.fileSize)}</span>
+                  <span className="text-[16px] text-[var(--text-primary)]">{f.fileName}</span>
+                  <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">{formatFileSize(f.fileSize)}</span>
                 </div>
               </div>
-              <button className="text-gray-400 hover:text-white">
+              <button className="text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
                 <Download size={20} />
               </button>
             </div>
@@ -227,10 +225,10 @@ function AssistantContent({ text }: { text: string }) {
     if (tableRows.length === 0) return;
     const [header, ...body] = tableRows;
     elements.push(
-      <div key={key++} className="border border-[#27272a] rounded-2xl overflow-hidden bg-[#18181a] mt-2 relative">
-        <div className="flex items-center justify-between p-3.5 border-b border-[#27272a] bg-[#18181a]">
-          <span className="font-medium text-[15px] text-gray-200">Table</span>
-          <div className="flex items-center gap-4 text-gray-400">
+      <div key={key++} className="border border-[var(--border-strong)] rounded-2xl overflow-hidden bg-[var(--bg-secondary)] mt-2 relative">
+        <div className="flex items-center justify-between p-3.5 border-b border-[var(--border-strong)] bg-[var(--bg-secondary)]">
+          <span className="font-medium text-[15px] text-[var(--text-primary)]">Table</span>
+          <div className="flex items-center gap-4 text-[var(--text-subtle)]">
             <Copy size={18} />
             <Download size={18} />
           </div>
@@ -300,7 +298,7 @@ function AssistantContent({ text }: { text: string }) {
   flushTable();
 
   return (
-    <div className="text-[16px] text-gray-200 leading-relaxed flex flex-col gap-4">
+    <div className="text-[16px] text-[var(--text-primary)] leading-relaxed flex flex-col gap-4">
       {elements}
     </div>
   );
@@ -308,7 +306,7 @@ function AssistantContent({ text }: { text: string }) {
 
 function StepsGroup({ steps }: { steps: StepData[] }) {
   return (
-    <div className="bg-[#18181a] border border-[#27272a] rounded-2xl p-1.5 flex flex-col relative">
+    <div className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] rounded-2xl p-1.5 flex flex-col relative">
       {steps.map((step, i) => {
         const Icon = getStepIcon(step.toolName);
         const isLast = i === steps.length - 1;
@@ -324,8 +322,8 @@ function StepsGroup({ steps }: { steps: StepData[] }) {
         );
       })}
       {steps.length > 5 && (
-        <div className="absolute -right-2 -bottom-4 w-10 h-10 bg-[#27272a] rounded-full flex items-center justify-center border border-[#3f3f46] shadow-lg z-10">
-          <ArrowDown size={20} className="text-gray-300" />
+        <div className="absolute -right-2 -bottom-4 w-10 h-10 bg-[var(--bg-elevated)] rounded-full flex items-center justify-center border border-[var(--border-strong)] shadow-lg z-10">
+          <ArrowDown size={20} className="text-[var(--text-secondary)]" />
         </div>
       )}
     </div>
@@ -435,19 +433,22 @@ export default function MobileChatDemoPage() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 z-10 bg-[#0f0f0f]">
+      <div className="flex items-center justify-between px-4 py-3 z-10 bg-[var(--bg-page)]">
         <div className="flex items-center gap-4">
-          <button className="text-gray-300 hover:text-white">
-            <Menu size={24} />
+          <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+              <line x1="3" y1="10" x2="21" y2="10" />
+              <line x1="3" y1="15" x2="14" y2="15" />
+            </svg>
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-lg font-medium">Stratos</span>
-            <span className="text-sm text-gray-500 flex items-center gap-1">
+            <span className="text-lg font-medium">ELK</span>
+            <span className="text-sm text-[var(--text-placeholder)] flex items-center gap-1">
               Agent <ChevronRight size={14} />
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-4 text-gray-300">
+        <div className="flex items-center gap-4 text-[var(--text-secondary)]">
           <button><PlusCircle size={22} /></button>
         </div>
       </div>
@@ -456,26 +457,12 @@ export default function MobileChatDemoPage() {
       <div className="flex-1 overflow-y-auto pb-28 scrollbar-hide">
         <div className="px-4 pt-2 flex flex-col gap-6 pb-10">
 
-          {/* Sticky Task Completed Banner */}
-          <div className="sticky top-0 z-10 bg-[#0f0f0f] pb-2 pt-2">
-            <div className="bg-[#122217] border border-[#1e3a26] rounded-xl p-3 flex items-center justify-between">
-              <div className="flex items-center gap-3 text-[#4ade80]">
-                <div className="relative flex items-center justify-center w-4 h-4">
-                  <div className="absolute inset-0 bg-[#4ade80] rounded-full opacity-20 scale-150" />
-                  <div className="w-2.5 h-2.5 bg-[#4ade80] rounded-full" />
-                </div>
-                <span className="font-medium text-[15px]">Task completed</span>
-              </div>
-              <Maximize2 size={18} className="text-gray-400" />
-            </div>
-          </div>
-
           {/* Render all mock messages */}
           {MOCK_MESSAGES.map((msg) => {
             if (msg.role === 'user') {
               return (
                 <div key={msg.id} className="flex justify-end">
-                  <div className="bg-[#27272a] text-gray-200 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] text-[16px] leading-relaxed">
+                  <div className="bg-[var(--user-bubble-bg)] text-[var(--user-bubble-text)] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] text-[16px] leading-relaxed">
                     {msg.content}
                   </div>
                 </div>
@@ -486,12 +473,12 @@ export default function MobileChatDemoPage() {
               <React.Fragment key={msg.id}>
                 {/* Tool call indicator */}
                 {msg.toolIndicator && (
-                  <div className="bg-[#18181a] border border-[#27272a] rounded-xl p-3.5 flex items-center justify-between">
-                    <div className="flex items-center gap-3 text-gray-300">
-                      <Lightbulb size={18} className="text-gray-400" />
+                  <div className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] rounded-xl p-3.5 flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-[var(--text-primary)]">
+                      <Lightbulb size={18} className="text-[var(--text-subtle)]" />
                       <span className="text-[15px]">{msg.toolIndicator}</span>
                     </div>
-                    <ChevronRight size={18} className="text-gray-500" />
+                    <ChevronRight size={18} className="text-[var(--text-placeholder)]" />
                   </div>
                 )}
 
@@ -512,14 +499,14 @@ export default function MobileChatDemoPage() {
                     <FileCard file={msg.file} />
                     <button
                       onClick={() => setShowFiles(true)}
-                      className="bg-[#18181a] border border-[#27272a] rounded-2xl p-3.5 flex items-center gap-3.5 text-left"
+                      className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] rounded-2xl p-3.5 flex items-center gap-3.5 text-left"
                     >
-                      <div className="bg-[#27272a] p-2.5 rounded-xl text-gray-300">
+                      <div className="bg-[var(--bg-elevated)] p-2.5 rounded-xl text-[var(--text-secondary)]">
                         <Folder size={24} strokeWidth={1.5} />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[15px] font-medium text-gray-200">All files</span>
-                        <span className="text-[13px] text-gray-500 mt-0.5">Preview and download files</span>
+                        <span className="text-[15px] font-medium text-[var(--text-primary)]">All files</span>
+                        <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">Preview and download files</span>
                       </div>
                     </button>
                   </div>
@@ -527,12 +514,12 @@ export default function MobileChatDemoPage() {
 
                 {/* Action Buttons */}
                 {msg.content || msg.blocks.some((b) => b.type === 'text') ? (
-                  <div className="flex items-center gap-6 mt-2 text-gray-400">
-                    <button className="hover:text-white"><VolumeX size={20} /></button>
-                    <button className="hover:text-white"><ThumbsUp size={20} /></button>
-                    <button className="hover:text-white"><ThumbsDown size={20} /></button>
+                  <div className="flex items-center gap-6 mt-2 text-[var(--text-subtle)]">
+                    <button className="hover:text-[var(--text-primary)]"><VolumeX size={20} /></button>
+                    <button className="hover:text-[var(--text-primary)]"><ThumbsUp size={20} /></button>
+                    <button className="hover:text-[var(--text-primary)]"><ThumbsDown size={20} /></button>
                     <div className="flex-1" />
-                    <button className="hover:text-white"><Share size={20} /></button>
+                    <button className="hover:text-[var(--text-primary)]"><Share size={20} /></button>
                   </div>
                 ) : null}
               </React.Fragment>
@@ -543,17 +530,17 @@ export default function MobileChatDemoPage() {
 
       {/* Bottom Input Area */}
       <div
-        className="absolute bottom-0 left-0 right-0 bg-[#0f0f0f] pt-2 px-4 flex flex-col gap-3 z-20"
+        className="absolute bottom-0 left-0 right-0 bg-[var(--bg-page)] pt-2 px-4 flex flex-col gap-3 z-20"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 32px)' }}
       >
-        <div className="flex items-center gap-3 bg-[#18181a] rounded-xl px-2 py-1.5 border border-[#27272a]">
+        <div className="flex items-center gap-3 bg-[var(--bg-secondary)] rounded-xl px-2 py-1.5 border border-[var(--border-strong)]">
           <div className="w-2" />
           <input
             type="text"
             placeholder="Enter your request..."
-            className="flex-1 bg-transparent text-white outline-none placeholder-gray-500 text-[15px]"
+            className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px]"
           />
-          <button className="p-1.5 text-gray-400 hover:text-white">
+          <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
             <PlusCircle size={22} />
           </button>
         </div>

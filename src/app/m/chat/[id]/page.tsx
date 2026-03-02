@@ -1,34 +1,36 @@
 'use client';
 
 import React, { use, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-  Menu,
   VolumeX,
   PlusCircle,
+  SquarePen,
   ChevronRight,
   Loader2,
-  Maximize2,
   ThumbsUp,
   ThumbsDown,
   Share,
-  Info,
   Download,
   FileSpreadsheet,
   FileText,
   FileIcon,
   Folder,
   ChevronDown,
-  Lightbulb,
-  Terminal,
   Globe,
-  Copy,
-  ArrowDown,
-  Check,
-  Bot,
+  ArrowUp,
   X,
+  ImageIcon,
+  Paperclip,
+  Camera,
+  BarChart2,
+  Target,
+  ListTodo,
+  Atom,
 } from 'lucide-react';
-import { MobileSidebar } from '@/components/mobile/sidebar';
+import { MobileSidebar, MobileSettingsOverlay, MobileGalleryOverlay } from '@/components/mobile/sidebar';
+import { StreamingMessage, toolNameToIcon, toolCallLabel, sanitizeAttr, sanitizeContent } from '@/components/chat/StreamingMessage';
 
 const SpeakIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -41,51 +43,23 @@ const SpeakIcon = () => (
 
 /* ─── Types ──────────────────────────────────────────────── */
 
-interface StepData {
-  toolId: string;
-  toolName: string;
-  status: 'running' | 'completed';
-  summary?: string;
-  args?: Record<string, unknown>;
-}
-
 interface TaskFile {
   fileName: string;
   downloadUrl: string;
   fileSize: number;
 }
 
-type AssistantBlock =
-  | { type: 'text'; text: string }
-  | { type: 'steps'; steps: StepData[] };
-
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  blocks: AssistantBlock[];
-  taskComplete?: boolean;
-  taskDuration?: string;
+  raw: string;
   file?: TaskFile;
   streaming?: boolean;
+  taskDone?: boolean;
 }
 
 /* ─── Helpers ────────────────────────────────────────────── */
-
-function getStepIcon(toolName: string) {
-  const lower = toolName.toLowerCase();
-  if (lower.includes('read') || lower.includes('document') || lower.includes('presentation'))
-    return FileText;
-  if (lower.includes('search') || lower.includes('fetch'))
-    return Globe;
-  return Terminal;
-}
-
-function formatToolLabel(toolName: string): string {
-  return toolName
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function formatFileSize(bytes: number): string {
   if (bytes > 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -101,143 +75,22 @@ function getFileIcon(fileName: string) {
 
 /* ─── Sub-components (assets from mockup) ────────────────── */
 
-/** StepItem — individual step row, expandable with dropdown */
-function StepItem({
-  step,
-  isLast,
-}: {
-  step: StepData;
-  isLast?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const Icon = getStepIcon(step.toolName);
-  const isRunning = step.status === 'running' && !!isLast;
-
-  // Build a detail subtitle from args (e.g. query, filename)
-  const argHint = step.args
-    ? String(step.args.query ?? step.args.title ?? step.args.url ?? step.args.prompt ?? '').slice(0, 30)
-    : '';
-  const subtitle = step.summary || argHint;
-  const hasDetail = !!subtitle;
-
-  return (
-    <div style={{ borderBottom: isLast ? 'none' : '0.5px solid rgba(255,255,255,0.06)' }}>
-      <button
-        onClick={() => hasDetail && setExpanded(!expanded)}
-        className="w-full flex items-center gap-2.5 text-left px-3 py-2.5"
-        style={{ cursor: hasDetail ? 'pointer' : 'default' }}
-      >
-        <div className="w-5 flex justify-center flex-shrink-0">
-          {isRunning ? (
-            <Loader2 size={14} strokeWidth={1.5} className="animate-spin text-gray-500" />
-          ) : (
-            <Icon size={14} strokeWidth={1.5} className="text-gray-500" />
-          )}
-        </div>
-        <span className="flex-1 text-[15px] text-gray-300 truncate min-w-0">
-          {formatToolLabel(step.toolName)}
-        </span>
-        {subtitle && !expanded && (
-          <span className="text-[13px] text-gray-600 truncate max-w-[100px] flex-shrink-0">
-            {subtitle.length > 25 ? subtitle.slice(0, 25) + '...' : subtitle}
-          </span>
-        )}
-        {hasDetail && (
-          <ChevronDown
-            size={16}
-            strokeWidth={1.5}
-            className="text-gray-600 flex-shrink-0 transition-transform duration-200"
-            style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          />
-        )}
-      </button>
-      {expanded && subtitle && (
-        <div className="px-10 pb-3 text-[14px] leading-relaxed text-gray-400">
-          {subtitle}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** ThinkBlock — expandable "Think" card matching Kimi's design */
-function ThinkBlock({ step }: { step: StepData }) {
-  const [expanded, setExpanded] = useState(false);
-  const reasoning = String(step.args?.reasoning ?? '');
-  const isRunning = step.status === 'running';
-
-  // Extract first line as title, rest as body
-  const lines = reasoning.split('\n').filter(Boolean);
-  const title = lines[0] ?? 'Thinking...';
-  const body = lines.slice(1).join('\n').trim();
-
-  return (
-    <div className="bg-[#18181a] border border-[#27272a] rounded-2xl overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2.5 text-left px-3.5 py-3"
-      >
-        <div className="w-5 flex justify-center flex-shrink-0">
-          {isRunning ? (
-            <Loader2 size={16} strokeWidth={1.5} className="animate-spin text-gray-500" />
-          ) : (
-            <Lightbulb size={16} strokeWidth={1.5} className="text-gray-400" />
-          )}
-        </div>
-        <span className="flex-1 text-[15px] text-gray-300 font-medium">Think</span>
-        <ChevronDown
-          size={18}
-          strokeWidth={1.5}
-          className="text-gray-600 flex-shrink-0 transition-transform duration-200"
-          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        />
-      </button>
-      {expanded && reasoning && (
-        <div className="px-3.5 pb-3.5 border-t border-[#27272a]">
-          <p className="text-[15px] font-medium text-gray-200 mt-3 mb-2">{title}</p>
-          {body && (
-            <p className="text-[15px] leading-relaxed text-gray-400">{body}</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** TableRow — table row matching the mockup */
-function TableRow({
-  col1,
-  col2,
-  isHeader,
-}: {
-  col1: string;
-  col2: string;
-  isHeader?: boolean;
-}) {
-  return (
-    <div className={`flex border-b border-[#27272a] last:border-0 ${isHeader ? 'bg-[#18181a]' : 'bg-[#121212]'}`}>
-      <div className="w-1/3 p-3.5 text-[15px] text-gray-300 border-r border-[#27272a]">{col1}</div>
-      <div className="w-2/3 p-3.5 text-[15px] text-gray-300">{col2}</div>
-    </div>
-  );
-}
-
 /** FileCard — file preview card */
 function FileCard({ file, onPreview }: { file: TaskFile; onPreview: () => void }) {
   const Icon = getFileIcon(file.fileName);
   return (
     <button
       onClick={onPreview}
-      className="bg-[#18181a] border border-[#27272a] rounded-2xl p-3.5 flex items-center gap-3.5 text-left w-full"
+      className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] rounded-2xl p-3.5 flex items-center gap-3.5 text-left w-full"
     >
-      <div className="bg-[#27272a] p-2.5 rounded-xl text-gray-300">
+      <div className="bg-[var(--bg-elevated)] p-2.5 rounded-xl text-[var(--text-secondary)]">
         <Icon size={24} strokeWidth={1.5} />
       </div>
       <div className="flex flex-col overflow-hidden flex-1">
-        <span className="text-[15px] font-medium text-gray-200 truncate">{file.fileName}</span>
-        <span className="text-[13px] text-gray-500 mt-0.5">{formatFileSize(file.fileSize)}</span>
+        <span className="text-[15px] font-medium text-[var(--text-primary)] truncate">{file.fileName}</span>
+        <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">{formatFileSize(file.fileSize)}</span>
       </div>
-      <ChevronRight size={18} className="text-gray-500 flex-shrink-0" />
+      <ChevronRight size={18} className="text-[var(--text-placeholder)] flex-shrink-0" />
     </button>
   );
 }
@@ -250,13 +103,13 @@ function FilePreviewOverlay({ file, onClose }: { file: TaskFile; onClose: () => 
   const Icon = getFileIcon(file.fileName);
 
   return (
-    <div className="absolute inset-0 bg-[#0f0f0f] z-50 flex flex-col">
+    <div className="absolute inset-0 bg-[var(--bg-page)] z-50 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272a] flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-strong)] flex-shrink-0">
         <button onClick={onClose} className="text-[#5c9dff] text-[15px] font-medium">
           Close
         </button>
-        <span className="text-[15px] font-medium text-gray-200 truncate max-w-[50%]">
+        <span className="text-[15px] font-medium text-[var(--text-primary)] truncate max-w-[50%]">
           {file.fileName}
         </span>
         <a
@@ -288,12 +141,12 @@ function FilePreviewOverlay({ file, onClose }: { file: TaskFile; onClose: () => 
         ) : (
           /* Non-previewable file types — show file info + actions */
           <div className="flex flex-col items-center justify-center h-full gap-5 px-6">
-            <div className="bg-[#1a1a1e] border border-[#27272a] p-6 rounded-2xl">
-              <Icon size={48} strokeWidth={1.2} className="text-gray-400" />
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border-strong)] p-6 rounded-2xl">
+              <Icon size={48} strokeWidth={1.2} className="text-[var(--text-subtle)]" />
             </div>
             <div className="text-center">
-              <p className="text-[16px] font-medium text-gray-200">{file.fileName}</p>
-              <p className="text-[13px] text-gray-500 mt-1">{formatFileSize(file.fileSize)}</p>
+              <p className="text-[16px] font-medium text-[var(--text-primary)]">{file.fileName}</p>
+              <p className="text-[13px] text-[var(--text-placeholder)] mt-1">{formatFileSize(file.fileSize)}</p>
             </div>
             <div className="flex flex-col gap-3 w-full max-w-[260px]">
               <a
@@ -307,7 +160,7 @@ function FilePreviewOverlay({ file, onClose }: { file: TaskFile; onClose: () => 
               <a
                 href={file.downloadUrl}
                 download={file.fileName}
-                className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-[15px] font-medium bg-[#27272a] text-gray-200"
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-[15px] font-medium bg-[var(--bg-elevated)] text-[var(--text-primary)]"
               >
                 <Download size={16} strokeWidth={2} />
                 Download
@@ -324,40 +177,40 @@ function FilePreviewOverlay({ file, onClose }: { file: TaskFile; onClose: () => 
 function FilesOverlay({ files, onClose }: { files: TaskFile[]; onClose: () => void }) {
   const totalSize = files.reduce((a, f) => a + f.fileSize, 0);
   return (
-    <div className="absolute inset-0 bg-[#121212] z-40 flex flex-col animate-slide-up rounded-t-3xl mt-12 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-[#27272a]">
-      <div className="flex flex-col items-center pt-3 pb-4 px-4 border-b border-[#1c1c1e]">
-        <div className="w-12 h-1.5 bg-[#2c2c2e] rounded-full mb-5 cursor-pointer" onClick={onClose} />
+    <div className="absolute inset-0 bg-[var(--content-card-bg)] z-40 flex flex-col animate-slide-up rounded-t-3xl mt-12 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-[var(--border-strong)]">
+      <div className="flex flex-col items-center pt-3 pb-4 px-4 border-b border-[var(--border-default)]">
+        <div className="w-12 h-1.5 bg-[var(--bg-elevated)] rounded-full mb-5 cursor-pointer" onClick={onClose} />
         <div className="flex items-center justify-between w-full">
           <div className="w-6" />
           <span className="font-medium text-[16px]">All files({files.length})</span>
-          <button className="text-gray-400 hover:text-white"><Download size={22} /></button>
+          <button className="text-[var(--text-subtle)] hover:text-[var(--text-primary)]"><Download size={22} /></button>
         </div>
       </div>
       <div className="p-4 flex flex-col gap-6 mt-2 overflow-y-auto scrollbar-hide">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Folder size={28} className="text-gray-500 fill-gray-500/20" strokeWidth={1.5} />
+            <Folder size={28} className="text-[var(--text-placeholder)] fill-[var(--text-placeholder)]/20" strokeWidth={1.5} />
             <div className="flex flex-col">
-              <span className="text-[16px] text-gray-200">output</span>
-              <span className="text-[13px] text-gray-500 mt-0.5">{formatFileSize(totalSize)}</span>
+              <span className="text-[16px] text-[var(--text-primary)]">output</span>
+              <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">{formatFileSize(totalSize)}</span>
             </div>
           </div>
-          <ChevronDown size={22} className="text-gray-500" />
+          <ChevronDown size={22} className="text-[var(--text-placeholder)]" />
         </div>
         {files.map((f) => {
           const Icon = getFileIcon(f.fileName);
           return (
             <div key={f.fileName} className="flex items-center justify-between pl-11">
               <div className="flex items-center gap-4">
-                <div className="border border-gray-600 rounded-lg p-1.5 text-gray-400">
+                <div className="border border-[var(--text-placeholder)] rounded-lg p-1.5 text-[var(--text-subtle)]">
                   <Icon size={20} strokeWidth={1.5} />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[16px] text-gray-200">{f.fileName}</span>
-                  <span className="text-[13px] text-gray-500 mt-0.5">{formatFileSize(f.fileSize)}</span>
+                  <span className="text-[16px] text-[var(--text-primary)]">{f.fileName}</span>
+                  <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">{formatFileSize(f.fileSize)}</span>
                 </div>
               </div>
-              <a href={f.downloadUrl} download={f.fileName} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white">
+              <a href={f.downloadUrl} download={f.fileName} target="_blank" rel="noopener noreferrer" className="text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
                 <Download size={20} />
               </a>
             </div>
@@ -368,178 +221,24 @@ function FilesOverlay({ files, onClose }: { files: TaskFile[]; onClose: () => vo
   );
 }
 
-/** AssistantContent — renders text with styled bullets, headers, and tables */
-function AssistantContent({ text }: { text: string }) {
-  const lines = text.split('\n');
-  const elements: React.ReactNode[] = [];
-  let currentList: string[] = [];
-  let tableRows: string[][] = [];
-  let key = 0;
 
-  const flushList = () => {
-    if (currentList.length === 0) return;
-    elements.push(
-      <ul key={key++} className="flex flex-col gap-4 pl-1">
-        {currentList.map((item, i) => (
-          <li key={i} className="flex items-start gap-3">
-            <span className="text-[#5c9dff] mt-2 text-[8px]">●</span>
-            <span>{renderInline(item)}</span>
-          </li>
-        ))}
-      </ul>
-    );
-    currentList = [];
-  };
-
-  const flushTable = () => {
-    if (tableRows.length === 0) return;
-    const [header, ...body] = tableRows;
-    elements.push(
-      <div key={key++} className="border border-[#27272a] rounded-2xl overflow-hidden bg-[#18181a] mt-2 relative">
-        <div className="flex items-center justify-between p-3.5 border-b border-[#27272a] bg-[#18181a]">
-          <span className="font-medium text-[15px] text-gray-200">Table</span>
-          <div className="flex items-center gap-4 text-gray-400">
-            <Copy size={18} />
-            <Download size={18} />
-          </div>
-        </div>
-        <div className="flex flex-col">
-          {header && <TableRow col1={header[0] ?? ''} col2={header.slice(1).join(' | ')} isHeader />}
-          {body.map((row, i) => (
-            <TableRow key={i} col1={row[0] ?? ''} col2={row.slice(1).join(' | ')} />
-          ))}
-        </div>
-      </div>
-    );
-    tableRows = [];
-  };
-
-  const renderInline = (s: string): React.ReactNode => {
-    const parts = s.split(/(\*\*[^*]+\*\*)/g);
-    if (parts.length === 1) return s;
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <span key={i} className="font-medium">{part.slice(2, -2)}</span>;
-      }
-      return part;
-    });
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Empty line
-    if (!trimmed) {
-      flushList();
-      flushTable();
-      continue;
-    }
-
-    // Table row: | col1 | col2 |
-    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      // Skip separator rows like |---|---|
-      if (/^\|[\s-:|]+\|$/.test(trimmed)) continue;
-      flushList();
-      const cells = trimmed.split('|').filter(Boolean).map((c) => c.trim());
-      tableRows.push(cells);
-      continue;
-    }
-
-    // If we were in a table, flush it
-    flushTable();
-
-    // Bullet item
-    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
-    if (bulletMatch) {
-      currentList.push(bulletMatch[1]);
-      continue;
-    }
-
-    // Not a list — flush
-    flushList();
-
-    // Heading
-    const headingMatch = trimmed.match(/^#{1,3}\s+(.+)$/);
-    if (headingMatch) {
-      elements.push(<div key={key++} className="font-medium mt-2">{renderInline(headingMatch[1])}</div>);
-      continue;
-    }
-
-    // Bold line or header-like line ending with colon
-    const isBoldLine = trimmed.startsWith('**') && trimmed.endsWith('**');
-    const isColonHeader = trimmed.endsWith(':') && trimmed.length < 80;
-
-    if (isBoldLine) {
-      elements.push(<div key={key++} className="font-medium">{trimmed.slice(2, -2)}</div>);
-    } else if (isColonHeader) {
-      elements.push(<div key={key++} className="font-medium mt-2">{renderInline(trimmed)}</div>);
-    } else {
-      elements.push(<p key={key++}>{renderInline(trimmed)}</p>);
-    }
-  }
-
-  flushList();
-  flushTable();
-
+function TypingBubble() {
   return (
-    <div className="text-[16px] text-gray-200 leading-relaxed flex flex-col gap-4">
-      {elements}
-    </div>
-  );
-}
-
-function StreamingDots() {
-  return (
-    <span className="inline-flex gap-1 items-center h-5">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="rounded-full"
-          style={{
-            width: 5,
-            height: 5,
-            background: 'rgba(255,255,255,0.4)',
-            animation: `mobileBounce 1.2s ease-in-out ${i * 0.15}s infinite`,
+    <div className="flex flex-col gap-2">
+      <div className="text-[var(--text-primary)] text-base leading-relaxed whitespace-pre-wrap flex items-center h-6 mt-2">
+        <motion.div
+          animate={{
+            scale: [0.8, 1.2, 0.8],
+            opacity: [0.5, 1, 0.5],
           }}
+          transition={{
+            repeat: Infinity,
+            duration: 1.5,
+            ease: 'easeInOut',
+          }}
+          className="w-3.5 h-3.5 bg-[var(--text-primary)] rounded-full"
         />
-      ))}
-      <style>{`
-        @keyframes mobileBounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-4px); }
-        }
-      `}</style>
-    </span>
-  );
-}
-
-/* ─── Steps group renderer ───────────────────────────────── */
-
-function StepsGroup({ steps }: { steps: StepData[] }) {
-  // Separate think steps from regular tool steps
-  const thinkSteps = steps.filter((s) => s.toolName === 'think');
-  const toolSteps = steps.filter((s) => s.toolName !== 'think');
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Think blocks — rendered as their own expandable cards */}
-      {thinkSteps.map((step) => (
-        <ThinkBlock key={step.toolId} step={step} />
-      ))}
-
-      {/* Regular tool steps — grouped in a bordered container */}
-      {toolSteps.length > 0 && (
-        <div className="bg-[#18181a] border border-[#27272a] rounded-2xl overflow-hidden">
-          {toolSteps.map((step, i) => (
-            <StepItem
-              key={step.toolId}
-              step={step}
-              isLast={i === toolSteps.length - 1}
-            />
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -558,15 +257,22 @@ function MobileConversationInner({ id }: { id: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [previewFile, setPreviewFile] = useState<TaskFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+  const [selectedChip, setSelectedChip] = useState<string | null>(null);
+  const [todos, setTodos] = useState<Array<{ text: string; done: boolean }>>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoSentRef = useRef(false);
   const creatingRef = useRef(false);
-  const streamStartRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const allFiles = messages.reduce<TaskFile[]>((acc, m) => {
     if (m.file) acc.push(m.file);
@@ -621,7 +327,7 @@ function MobileConversationInner({ id }: { id: string }) {
               id: m.id,
               role: m.role as 'user' | 'assistant',
               content: m.content,
-              blocks: m.content ? [{ type: 'text' as const, text: m.content }] : [],
+              raw: m.content ?? '',
             }))
           );
         }
@@ -642,58 +348,80 @@ function MobileConversationInner({ id }: { id: string }) {
   }, [loaded, urlMessage]);
 
   const handleNewChat = () => {
+    abortRef.current?.abort();
+    setIsStreaming(false);
     router.push('/m/chat');
   };
 
-  /* Send message + SSE stream with block-based rendering */
+  const handleFileClick = (accept?: string) => {
+    if (fileInputRef.current) {
+      if (accept) {
+        fileInputRef.current.accept = accept;
+      } else {
+        fileInputRef.current.removeAttribute('accept');
+      }
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setIsPlusMenuOpen(false);
+      setAttachedFiles((prev) => [...prev, ...Array.from(files)]);
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  const handleCameraClick = () => {
+    cameraInputRef.current?.click();
+  };
+
+  /* Send message — all requests go through OpenClaw (/api/chat) */
   const handleSend = async (content?: string) => {
     const text = (content ?? input).trim();
     if (!text || isStreaming) return;
     if (!content) setInput('');
-
-    const userMsg: Message = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content: text,
-      blocks: [],
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsStreaming(true);
-    streamStartRef.current = Date.now();
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     const assistantId = `temp-assistant-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: assistantId, role: 'assistant', content: '', blocks: [], streaming: true },
+      { id: `temp-${Date.now()}`, role: 'user', content: text, raw: '' },
     ]);
+    setIsStreaming(true);
+    setMessages((prev) => [
+      ...prev,
+      { id: assistantId, role: 'assistant', content: '', raw: '', streaming: true },
+    ]);
+
+    let rawAccum = '';
+    let imageTagBuffer = '';
+    let isImageTool = false;
+    const pushRaw = (r: string) =>
+      setMessages((prev) => prev.map((m) => m.id !== assistantId ? m : { ...m, raw: r }));
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          conversationId: id,
-          message: text,
-          mode: urlMode ?? 'openclaw',
-        }),
+        body: JSON.stringify({ conversationId: id, message: text, mode: 'auto' }),
+        signal: controller.signal,
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `Request failed: ${res.status}`);
-      }
-
-      const reader = res.body?.getReader();
+      const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      if (!reader) throw new Error('No response stream');
-
       let buffer = '';
+      let streamDone = false;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
         buffer = parts.pop() ?? '';
@@ -702,110 +430,91 @@ function MobileConversationInner({ id }: { id: string }) {
           const line = part.trim();
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6);
-          if (data === '[DONE]') continue;
+          if (data === '[DONE]') { streamDone = true; break; }
 
           const parsed = JSON.parse(data);
-          if (parsed.error) throw new Error(parsed.error);
+          if (parsed.type === 'error') throw new Error(parsed.message || 'Stream error');
 
-          if (parsed.type === 'tool_call') {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                const blocks = [...m.blocks];
-                const last = blocks[blocks.length - 1];
-                const step: StepData = {
-                  toolId: parsed.toolId,
-                  toolName: parsed.toolName,
-                  status: 'running',
-                  args: parsed.args,
-                };
-                if (last?.type === 'steps') {
-                  blocks[blocks.length - 1] = { ...last, steps: [...last.steps, step] };
-                } else {
-                  blocks.push({ type: 'steps', steps: [step] });
+          if (parsed.type === 'text' && parsed.text) {
+            rawAccum += parsed.text;
+            pushRaw(rawAccum);
+            scrollToBottom();
+          } else if (parsed.type === 'tool_call' && parsed.toolName) {
+            isImageTool = parsed.toolName === 'generate_image';
+            imageTagBuffer = '';
+            const iconName = toolNameToIcon(parsed.toolName);
+            const label = toolCallLabel(parsed.toolName, parsed.args ?? {});
+            rawAccum += `<tool name="${iconName}" label="${sanitizeAttr(label)}">`;
+            pushRaw(rawAccum);
+            scrollToBottom();
+          } else if (parsed.type === 'tool_progress' && parsed.message) {
+            // Check for todos metadata
+            if (parsed.message.startsWith('{"__type":"todos_update"')) {
+              try {
+                const meta = JSON.parse(parsed.message);
+                if (meta.__type === 'todos_update' && Array.isArray(meta.todos)) {
+                  setTodos(meta.todos.map((t: { text: string; done: boolean }) => ({ text: t.text, done: t.done })));
+                  continue;
                 }
-                return { ...m, blocks };
-              })
-            );
+              } catch { /* not JSON, fall through */ }
+            }
+            const isImageTag = /^<\/?image_(generating|result)[\s>]/.test(parsed.message);
+            if (isImageTool && isImageTag) {
+              // Buffer image tags to emit AFTER closing </tool>
+              imageTagBuffer += `${parsed.message}\n`;
+            } else {
+              rawAccum += `${isImageTag ? parsed.message : sanitizeContent(parsed.message)}\n`;
+            }
+            pushRaw(rawAccum + (isImageTool ? imageTagBuffer : ''));
+            scrollToBottom();
           } else if (parsed.type === 'tool_result') {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                const blocks = m.blocks.map((block) => {
-                  if (block.type !== 'steps') return block;
-                  return {
-                    ...block,
-                    steps: block.steps.map((s) =>
-                      s.toolId === parsed.toolId
-                        ? { ...s, status: 'completed' as const, summary: parsed.summary }
-                        : s
-                    ),
-                  };
-                });
-                return { ...m, blocks };
-              })
-            );
-          } else if (parsed.type === 'file_ready' || (parsed.type === 'done' && parsed.file)) {
-            const f = parsed.file ?? {
-              name: parsed.fileName,
-              size: parsed.fileSize,
-              url: parsed.downloadUrl,
-            };
-            const taskFile: TaskFile = {
-              fileName: f.name ?? f.fileName,
-              downloadUrl: f.url ?? f.downloadUrl,
-              fileSize: f.size ?? f.fileSize ?? 0,
-            };
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantId ? { ...m, file: taskFile } : m))
-            );
-          } else if (parsed.text) {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                const blocks = [...m.blocks];
-                const last = blocks[blocks.length - 1];
-                if (last?.type === 'text') {
-                  blocks[blocks.length - 1] = { ...last, text: last.text + parsed.text };
-                } else {
-                  blocks.push({ type: 'text', text: parsed.text });
-                }
-                return { ...m, blocks, content: m.content + parsed.text };
-              })
-            );
+            rawAccum += '</tool>';
+            // Flush buffered image tags AFTER closing </tool>
+            if (imageTagBuffer) {
+              rawAccum += imageTagBuffer;
+              imageTagBuffer = '';
+            }
+            isImageTool = false;
+            pushRaw(rawAccum);
+          } else if (parsed.type === 'file_ready') {
+            const f = parsed.file;
+            if (f) {
+              setMessages((prev) => prev.map((m) => m.id !== assistantId ? m : {
+                ...m,
+                file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0 },
+              }));
+            }
+          } else if (parsed.type === 'done') {
+            const f = parsed.file;
+            if (f) {
+              setMessages((prev) => prev.map((m) => m.id !== assistantId ? m : {
+                ...m,
+                taskDone: true,
+                file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0 },
+              }));
+            }
           }
         }
+        if (streamDone) break;
       }
 
-      /* Finalize */
-      const secs = ((Date.now() - streamStartRef.current) / 1000).toFixed(1);
       setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== assistantId) return m;
-          const hasSteps = m.blocks.some((b) => b.type === 'steps');
-          return {
-            ...m,
-            taskComplete: hasSteps,
-            taskDuration: `${secs}s`,
-            streaming: false,
-          };
-        })
+        prev.map((m) => m.id !== assistantId ? m :
+          { ...m, raw: rawAccum, content: rawAccum, streaming: false }
+        )
       );
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       console.error('Chat error:', err);
+      const errText = 'Sorry, something went wrong. Please try again.';
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? {
-                ...m,
-                content: 'Sorry, something went wrong. Please try again.',
-                blocks: [{ type: 'text' as const, text: 'Sorry, something went wrong. Please try again.' }],
-                streaming: false,
-              }
-            : m
+        prev.map((m) => m.id === assistantId
+          ? { ...m, content: errText, raw: errText, streaming: false }
+          : m
         )
       );
     } finally {
+      abortRef.current = null;
       setIsStreaming(false);
     }
   };
@@ -814,7 +523,7 @@ function MobileConversationInner({ id }: { id: string }) {
   if (id === 'new') {
     return (
       <div className="flex flex-1 items-center justify-center h-full">
-        <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+        <Loader2 className="h-5 w-5 animate-spin text-[var(--text-placeholder)]" />
       </div>
     );
   }
@@ -822,7 +531,7 @@ function MobileConversationInner({ id }: { id: string }) {
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center h-full gap-3">
-        <p className="text-[14px] text-gray-500">Conversation not found.</p>
+        <p className="text-[14px] text-[var(--text-placeholder)]">Conversation not found.</p>
         <button onClick={() => router.push('/m/chat')} className="text-[13px] font-medium text-[#5c9dff]">
           Back to chats
         </button>
@@ -830,26 +539,25 @@ function MobileConversationInner({ id }: { id: string }) {
     );
   }
 
-  /* Check if any assistant message has task complete — for sticky banner */
-  const hasTaskComplete = messages.some((m) => m.taskComplete);
-
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 z-10 bg-[#0f0f0f]">
+      <div className="flex items-center justify-between px-4 py-3 z-10 bg-[var(--bg-page)]">
         <div className="flex items-center gap-4">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-300 hover:text-white">
-            <Menu size={24} />
+          <button onClick={() => setSidebarOpen(true)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+              <line x1="3" y1="10" x2="21" y2="10" />
+              <line x1="3" y1="15" x2="14" y2="15" />
+            </svg>
           </button>
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-medium">Stratos</span>
-            <span className="text-sm text-gray-500 flex items-center gap-1 cursor-pointer hover:text-gray-300">
-              Agent <ChevronRight size={14} />
-            </span>
-          </div>
+          <span className="flex items-center gap-1 font-semibold text-lg">
+            ELK{' '}
+            <span className="text-[var(--text-subtle)] font-normal">Agent</span>
+            <ChevronRight className="w-4 h-4 text-[var(--text-subtle)]" />
+          </span>
         </div>
-        <div className="flex items-center gap-4 text-gray-300">
-          <button onClick={handleNewChat}><PlusCircle size={22} /></button>
+        <div className="flex items-center gap-4 text-[var(--text-secondary)]">
+          <button onClick={handleNewChat}><SquarePen size={18} strokeWidth={2.5} /></button>
         </div>
       </div>
 
@@ -857,205 +565,271 @@ function MobileConversationInner({ id }: { id: string }) {
       <div ref={scrollRef} className="flex-1 overflow-y-auto pb-28 scrollbar-hide">
         {messages.length === 0 && !isStreaming ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-[14px] text-gray-500">Start a conversation...</p>
+            <p className="text-[14px] text-[var(--text-placeholder)]">Start a conversation...</p>
           </div>
         ) : (
           <div className="px-4 pt-2 flex flex-col gap-6 pb-10">
-            {/* Sticky Task Completed Banner */}
-            {hasTaskComplete && (
-              <div className="sticky top-0 z-10 bg-[#0f0f0f] pb-2 pt-2">
-                <div className="bg-[#122217] border border-[#1e3a26] rounded-xl p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-[#4ade80]">
-                    <div className="relative flex items-center justify-center w-4 h-4">
-                      <div className="absolute inset-0 bg-[#4ade80] rounded-full opacity-20 scale-150" />
-                      <div className="w-2.5 h-2.5 bg-[#4ade80] rounded-full" />
-                    </div>
-                    <span className="font-medium text-[15px]">Task completed</span>
-                  </div>
-                  <Maximize2 size={18} className="text-gray-400" />
-                </div>
-              </div>
-            )}
-
             {messages.map((msg) => {
               if (msg.role === 'user') {
                 return (
-                  <div key={msg.id} className="flex justify-end">
-                    <div className="bg-[#27272a] text-gray-200 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] text-[16px] leading-relaxed">
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                    className="flex justify-end"
+                  >
+                    <div className="bg-[var(--user-bubble-bg)] text-[var(--user-bubble-text)] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] text-[16px] leading-relaxed">
                       {msg.content}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               }
 
-              /* ── Assistant message — chronological: steps → file → text ── */
-              {
-                const stepBlocks = msg.blocks.filter((b) => b.type === 'steps');
-                const textBlocks = msg.blocks.filter((b) => b.type === 'text');
+              /* ── Assistant message — interleaved blocks ── */
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                  className="flex flex-col gap-2"
+                >
+                  {/* Streaming message */}
+                  {msg.raw && (
+                    <StreamingMessage content={msg.raw} done={!msg.streaming} onSendMessage={(text) => handleSend(text)} />
+                  )}
 
-                return (
-                  <React.Fragment key={msg.id}>
-                    {/* 1. Steps group (tool calls) */}
-                    {stepBlocks.map((block, bi) =>
-                      block.type === 'steps' ? <StepsGroup key={`s-${bi}`} steps={block.steps} /> : null
-                    )}
+                  {/* File card + All files */}
+                  {msg.file && (
+                    <div className="flex flex-col gap-2.5 mt-1">
+                      <FileCard file={msg.file} onPreview={() => setPreviewFile(msg.file!)} />
+                      <button
+                        onClick={() => setShowFiles(true)}
+                        className="bg-[var(--bg-tertiary)] border border-[var(--bg-elevated)] rounded-2xl p-3.5 flex items-center gap-3.5 text-left w-full"
+                      >
+                        <div className="bg-[var(--bg-elevated)] p-2.5 rounded-xl text-[var(--text-secondary)]">
+                          <Folder size={22} strokeWidth={1.5} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[15px] font-medium text-[var(--text-primary)]">All files</span>
+                          <span className="text-[13px] text-[var(--text-placeholder)] mt-0.5">Preview and download files</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
 
-                    {/* 2. File card (right after the tool that produced it) */}
-                    {msg.file && (
-                      <div className="flex flex-col gap-3 mt-1">
-                        <FileCard file={msg.file} onPreview={() => setPreviewFile(msg.file!)} />
-                        {allFiles.length > 1 && (
-                          <button
-                            onClick={() => setShowFiles(true)}
-                            className="bg-[#18181a] border border-[#27272a] rounded-2xl p-3.5 flex items-center gap-3.5 text-left"
-                          >
-                            <div className="bg-[#27272a] p-2.5 rounded-xl text-gray-300">
-                              <Folder size={24} strokeWidth={1.5} />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[15px] font-medium text-gray-200">All files</span>
-                              <span className="text-[13px] text-gray-500 mt-0.5">Preview and download files</span>
-                            </div>
-                          </button>
-                        )}
-                      </div>
-                    )}
+                  {/* Pulsing dot — visible while streaming (initial load or thinking) */}
+                  {msg.streaming && <TypingBubble />}
 
-                    {/* 3. AI text commentary */}
-                    {textBlocks.map((block, bi) =>
-                      block.type === 'text' ? <AssistantContent key={`t-${bi}`} text={block.text} /> : null
-                    )}
-
-                    {/* Streaming dots */}
-                    {msg.streaming && msg.blocks.length === 0 && <StreamingDots />}
-
-                    {/* Action Buttons */}
-                    {msg.content && !msg.streaming && (
-                      <div className="flex items-center gap-6 mt-2 text-gray-400">
-                        <button className="hover:text-white"><VolumeX size={20} /></button>
-                        <button className="hover:text-white"><ThumbsUp size={20} /></button>
-                        <button className="hover:text-white"><ThumbsDown size={20} /></button>
-                        <div className="flex-1" />
-                        <button className="hover:text-white"><Share size={20} /></button>
-                      </div>
-                    )}
-                  </React.Fragment>
-                );
-              }
+                  {/* Reaction bar — only after streaming completes */}
+                  {msg.raw && !msg.streaming && (
+                    <div className="flex items-center gap-6 mt-2 text-[var(--text-subtle)]">
+                      <button className="hover:text-[var(--text-primary)]"><VolumeX size={20} /></button>
+                      <button className="hover:text-[var(--text-primary)]"><ThumbsUp size={20} /></button>
+                      <button className="hover:text-[var(--text-primary)]"><ThumbsDown size={20} /></button>
+                      <div className="flex-1" />
+                      <button className="hover:text-[var(--text-primary)]"><Share size={20} /></button>
+                    </div>
+                  )}
+                </motion.div>
+              );
             })}
           </div>
         )}
       </div>
 
-      {/* Hidden file input */}
+      {/* Hidden file inputs */}
       <input
-        ref={fileInputRef}
         type="file"
-        multiple
-        accept=".csv,.xlsx,.xls,.pdf,.txt,.md,.docx,.pptx,.json,.png,.jpg,.jpeg"
-        onChange={(e) => {
-          const selected = Array.from(e.target.files ?? []);
-          if (selected.length > 0) setAttachedFiles((prev) => [...prev, ...selected]);
-          e.target.value = '';
-        }}
+        ref={fileInputRef}
         className="hidden"
+        onChange={handleFileChange}
+        multiple
       />
+      <input
+        type="file"
+        ref={cameraInputRef}
+        className="hidden"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileChange}
+      />
+
+      {/* Plus menu — bottom sheet */}
+      {isPlusMenuOpen && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-[var(--overlay)]" onClick={() => setIsPlusMenuOpen(false)} />
+          <div className="relative z-10 bg-[var(--bg-tertiary)] rounded-t-3xl animate-slide-up">
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-4">
+              <div className="w-9 h-1 rounded-full bg-[var(--text-placeholder)]" />
+            </div>
+
+            {/* File buttons row */}
+            <div className="flex gap-3 px-6 pb-5">
+              <button
+                className="flex-1 bg-[var(--bg-elevated)] rounded-2xl py-4 flex flex-col items-center gap-2 active:bg-[var(--sidebar-item-active)] transition-colors"
+                onClick={handleCameraClick}
+              >
+                <Camera className="w-6 h-6 text-[var(--text-secondary)]" />
+                <span className="text-sm font-medium text-[var(--text-primary)]">Camera</span>
+              </button>
+              <button
+                className="flex-1 bg-[var(--bg-elevated)] rounded-2xl py-4 flex flex-col items-center gap-2 active:bg-[var(--sidebar-item-active)] transition-colors"
+                onClick={() => handleFileClick('image/*,video/*')}
+              >
+                <ImageIcon className="w-6 h-6 text-[var(--text-secondary)]" />
+                <span className="text-sm font-medium text-[var(--text-primary)]">Photos</span>
+              </button>
+              <button
+                className="flex-1 bg-[var(--bg-elevated)] rounded-2xl py-4 flex flex-col items-center gap-2 active:bg-[var(--sidebar-item-active)] transition-colors"
+                onClick={() => handleFileClick()}
+              >
+                <Paperclip className="w-6 h-6 text-[var(--text-secondary)]" />
+                <span className="text-sm font-medium text-[var(--text-primary)]">Files</span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="mx-6 border-t border-[var(--bg-elevated)]" />
+
+            {/* Capability list */}
+            <div className="px-6 py-3 flex flex-col" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+              {[
+                { icon: Globe, label: 'Deep Research', desc: 'Get a detailed report' },
+                { icon: BarChart2, label: 'Analysis', desc: 'Analyze data and trends' },
+                { icon: Target, label: 'Strategy', desc: 'Plan and strategize' },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => { setSelectedChip(item.label); setIsPlusMenuOpen(false); }}
+                    className="flex items-center gap-4 py-3.5 active:bg-[var(--sidebar-item-hover)] rounded-xl px-1 transition-colors"
+                  >
+                    <Icon size={22} className="text-[var(--text-subtle)] shrink-0" />
+                    <div className="flex flex-col items-start">
+                      <span className="text-[15px] font-medium text-[var(--text-primary)]">{item.label}</span>
+                      <span className="text-[13px] text-[var(--text-placeholder)]">{item.desc}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Input Area */}
       <div
-        className="absolute bottom-0 left-0 right-0 bg-[#0f0f0f] pt-2 px-4 flex flex-col gap-2.5 z-20"
+        className="absolute bottom-0 left-0 right-0 bg-[var(--bg-page)] pt-2 px-4 flex flex-col gap-2.5 z-20"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 32px)' }}
       >
-        {hasTaskComplete ? (
-          /* Kimi-style input card — shown after task completes */
-          <div className="bg-[#18181a] border border-[#27272a] rounded-2xl overflow-hidden">
-            {/* Mode header bar */}
-            <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[#27272a]">
-              <div className="flex items-center gap-2.5 text-gray-400">
-                <Bot size={18} strokeWidth={1.5} />
-                <span className="text-[15px] font-medium text-gray-200">Agent</span>
+        {/* Task Progress Bar */}
+        {todos.length > 0 && (() => {
+          const done = todos.filter((t) => t.done).length;
+          const total = todos.length;
+          const allDone = done === total;
+          return (
+            <div className="flex items-center gap-2.5 px-1">
+              <ListTodo size={16} strokeWidth={1.5} className="text-[var(--text-subtle)] shrink-0" />
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-default)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${(done / total) * 100}%`, background: allDone ? '#22c55e' : '#5c9dff' }}
+                />
               </div>
-              <button
-                onClick={handleNewChat}
-                className="text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                <X size={18} strokeWidth={1.5} />
-              </button>
+              <span className="text-[12px] text-[var(--text-subtle)] shrink-0 tabular-nums">
+                {done}/{total}
+              </span>
+              {allDone && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              )}
             </div>
+          );
+        })()}
 
-            {/* File chips */}
-            {attachedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 px-3.5 pt-2.5">
-                {attachedFiles.map((f, i) => (
-                  <span
-                    key={`${f.name}-${i}`}
-                    className="inline-flex items-center gap-1.5 bg-[#27272a] rounded-full px-2.5 py-1 text-[12px] text-gray-300"
+        {/* Input card — always the same shape */}
+        <div className="bg-[var(--bg-tertiary)] border border-[var(--border-strong)] rounded-2xl overflow-hidden">
+          {/* Thinking chip */}
+          {selectedChip && (
+            <div className="px-3 pt-2.5">
+              <div className="flex items-center gap-1 px-3 py-1 rounded-full w-max" style={{ background: 'var(--thinking-pill-bg)', color: 'var(--thinking-pill-text)' }}>
+                <Atom className="w-4 h-4" />
+                <span className="text-sm font-medium">{selectedChip}</span>
+                <X
+                  className="w-4 h-4 ml-1 cursor-pointer"
+                  onClick={() => setSelectedChip(null)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* File chips */}
+          {attachedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {attachedFiles.map((f, i) => (
+                <span
+                  key={`${f.name}-${i}`}
+                  className="inline-flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-full px-2.5 py-1 text-[12px] text-[var(--text-primary)]"
+                >
+                  {f.name.length > 18 ? f.name.slice(0, 15) + '...' : f.name}
+                  <button
+                    onClick={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="text-[var(--text-placeholder)] hover:text-[var(--text-primary)]"
                   >
-                    {f.name.length > 18 ? f.name.slice(0, 15) + '...' : f.name}
-                    <button
-                      onClick={() => setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="text-gray-500 hover:text-white"
-                    >
-                      <X size={10} strokeWidth={2.5} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Input row */}
-            <div className="flex items-center gap-3 px-2 py-1.5">
-              <button className="p-1.5 text-gray-400 hover:text-white">
-                <SpeakIcon />
-              </button>
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Enter your task..."
-                className="flex-1 bg-transparent text-white outline-none placeholder-gray-500 text-[15px]"
-                disabled={isStreaming}
-              />
-              <button
-                className="p-1.5 text-gray-400 hover:text-white"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <PlusCircle size={22} />
-              </button>
+                    <X size={10} strokeWidth={2.5} />
+                  </button>
+                </span>
+              ))}
             </div>
-          </div>
-        ) : (
-          /* Simple input — shown before task completes */
-          <div className="flex items-center gap-3 bg-[#18181a] rounded-xl px-2 py-1.5 border border-[#27272a]">
-            <div className="w-2" />
-            <input
-              type="text"
+          )}
+
+          {/* Input row */}
+          <div className="flex items-center gap-3 px-2 py-1.5">
+            <button
+              className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]"
+              onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+            >
+              <PlusCircle size={22} />
+            </button>
+            <textarea
+              ref={textareaRef}
+              rows={1}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Auto-resize
+                const el = e.target;
+                el.style.height = 'auto';
+                el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }
               }}
-              placeholder="Enter your request..."
-              className="flex-1 bg-transparent text-white outline-none placeholder-gray-500 text-[15px]"
+              placeholder="Ask ELK anything"
+              className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed"
+              style={{ maxHeight: 120 }}
               disabled={isStreaming}
             />
-            <button
-              className="p-1.5 text-gray-400 hover:text-white"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <PlusCircle size={22} />
-            </button>
+            {input.trim() ? (
+              <button
+                className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
+                onClick={() => handleSend()}
+              >
+                <ArrowUp size={18} strokeWidth={2.5} />
+              </button>
+            ) : (
+              <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
+                <SpeakIcon />
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* File preview overlay */}
@@ -1068,8 +842,25 @@ function MobileConversationInner({ id }: { id: string }) {
         <FilesOverlay files={allFiles} onClose={() => setShowFiles(false)} />
       )}
 
-      {/* Sidebar */}
-      {sidebarOpen && <MobileSidebar onClose={() => setSidebarOpen(false)} />}
+      {/* Settings Overlay */}
+      {settingsOpen && <MobileSettingsOverlay onClose={() => setSettingsOpen(false)} />}
+
+      {/* Gallery Overlay */}
+      {galleryOpen && (
+        <MobileGalleryOverlay
+          onClose={() => setGalleryOpen(false)}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      )}
+
+      {/* Sidebar — rendered last so it sits on top of gallery */}
+      {sidebarOpen && (
+        <MobileSidebar
+          onClose={() => { setSidebarOpen(false); setGalleryOpen(false); }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenGallery={() => setGalleryOpen(true)}
+        />
+      )}
     </>
   );
 }
@@ -1087,7 +878,7 @@ export default function MobileChatConversationPage({
     <Suspense
       fallback={
         <div className="flex flex-1 items-center justify-center h-full">
-          <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+          <Loader2 className="h-5 w-5 animate-spin text-[var(--text-placeholder)]" />
         </div>
       }
     >

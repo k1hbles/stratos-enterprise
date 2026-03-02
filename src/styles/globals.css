@@ -322,13 +322,13 @@
    DARK MODE
    ========================================================================== */
 .dark {
-  /* ── Base backgrounds (Kimi: body rgb(22,23,23) = #161717) ── */
-  --bg-page: #161717;
+  /* ── Base backgrounds ── */
+  --bg-page: #0a0a0a;
   --bg-home: transparent;
-  --bg-primary: #161717;
-  --bg-secondary: #1a1a1a;
-  --bg-tertiary: #1f1f1f;
-  --bg-elevated: #272727;
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1a1a1a;
+  --bg-elevated: #222222;
 
   --surface-input: #1c1c1e;
   --surface-card: rgba(255, 255, 255, 0.03);
@@ -347,21 +347,21 @@
   --surface-glass-subtle: rgba(255, 255, 255, 0.02);
   --surface-glass-subtle-border: rgba(255, 255, 255, 0.04);
 
-  --text-primary: rgba(255, 255, 255, 0.90);
-  --text-secondary: rgba(255, 255, 255, 0.50);
+  --text-primary: #f0f0f0;
+  --text-secondary: #a0a0a0;
   --text-tertiary: rgba(255, 255, 255, 0.28);
-  --text-muted: rgba(255, 255, 255, 0.14);
+  --text-muted: #666666;
   --text-subtle: rgba(255, 255, 255, 0.38);
   --text-placeholder: rgba(255, 255, 255, 0.32);
-  --text-inverse: #161717;
+  --text-inverse: #0f0f0f;
 
-  /* ── Sidebar — same as body bg (Kimi: sidebar = body = #161717) ── */
-  --sidebar-bg: #161717;
+  /* ── Sidebar ── */
+  --sidebar-bg: #0f0f0f;
   --sidebar-border: transparent;
   --sidebar-item-hover: rgba(255, 255, 255, 0.05);
   --sidebar-item-active: rgba(255, 255, 255, 0.10);
 
-  /* ── Content card (Kimi: main bg rgb(18,18,18) = #121212, border 0.10) ── */
+  /* ── Content card ── */
   --content-card-bg: #121212;
   --content-card-border: rgba(255, 255, 255, 0.10);
 
@@ -371,15 +371,15 @@
   --input-placeholder: rgba(255, 255, 255, 0.28);
 
   --btn-primary-bg: rgba(255, 255, 255, 0.90);
-  --btn-primary-text: #161717;
+  --btn-primary-text: #0f0f0f;
   --btn-primary-hover: rgba(255, 255, 255, 0.80);
   --btn-secondary-bg: rgba(255, 255, 255, 0.06);
   --btn-secondary-text: rgba(255, 255, 255, 0.90);
   --btn-secondary-border: rgba(255, 255, 255, 0.09);
 
-  --bg-gradient-start: #161717;
-  --bg-gradient-mid: #141418;
-  --bg-gradient-end: #171720;
+  --bg-gradient-start: #0f0f0f;
+  --bg-gradient-mid: #0f0f12;
+  --bg-gradient-end: #0f0f18;
 
   --accent-light: rgba(0, 122, 255, 0.15);
   --accent-glow: 0 0 20px rgba(139, 92, 246, 0.25);
@@ -388,8 +388,8 @@
   --accent-text: rgba(59, 130, 246, 0.90);
 
   --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-default: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
   --border-active: rgba(139, 92, 246, 0.40);
 
   --glass-bg: rgba(255, 255, 255, 0.03);
@@ -400,13 +400,20 @@
   --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.3);
   --shadow-dropdown: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
-  /* User bubble — Kimi-style dark */
-  --user-bubble-bg: #292929;
+  /* User bubble */
+  --user-bubble-bg: #1e1e1e;
+  --user-bubble-border: rgba(255, 255, 255, 0.08);
   --user-bubble-text: rgba(255, 255, 255, 0.84);
 
-  /* Send button (Kimi: bg rgba(255,255,255,0.18), icon white) */
-  --send-btn-bg: rgba(255, 255, 255, 0.18);
-  --send-btn-icon: rgba(255, 255, 255, 0.90);
+  /* Chips */
+  --chip-bg: #1a1a1a;
+  --chip-border: rgba(255, 255, 255, 0.10);
+  --thinking-pill-bg: #0A2540;
+  --thinking-pill-text: #4D9FFF;
+
+  /* Send button */
+  --send-btn-bg: #FFFFFF;
+  --send-btn-icon: #000000;
   --send-btn-loading-border: rgba(0, 0, 0, 0.2);
   --send-btn-loading-top: rgba(0, 0, 0, 0.8);
 
@@ -414,15 +421,15 @@
   --toolbar-hover-bg: rgba(255, 255, 255, 0.07);
   --toolbar-hover-icon: rgba(255, 255, 255, 0.60);
 
-  /* ── Chatbox (Kimi: bg #1f1f1f, border 0.25, focus 0.35) ── */
-  --chatbox-bg: #1f1f1f;
+  /* ── Chatbox ── */
+  --chatbox-bg: #161616;
   --chatbox-border: rgba(255, 255, 255, 0.25);
   --chatbox-border-focus: rgba(255, 255, 255, 0.35);
   --chatbox-glow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 0 20px rgba(0, 0, 0, 0.2);
   --chatbox-text: rgba(255, 255, 255, 0.92);
 
   /* ── Dropdowns — elevated panels ── */
-  --dropdown-bg: #1c1c1e;
+  --dropdown-bg: #18181a;
   --dropdown-border: rgba(255, 255, 255, 0.08);
   --dropdown-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --dropdown-hover: rgba(255, 255, 255, 0.05);
@@ -466,7 +473,7 @@
   --task-fade-solid: rgba(18, 18, 18, 1);
   --task-fade-transparent: rgba(18, 18, 18, 0);
 
-  --greeting-text: rgba(255, 255, 255, 0.92);
+  --greeting-text: #e5e7eb;
   --greeting-cursor: rgba(255, 255, 255, 0.75);
 
   --horizon-bg: transparent;
@@ -488,7 +495,7 @@
   --sidebar-collapse-hover: rgba(255, 255, 255, 0.05);
 
   /* ── Profile menu ── */
-  --profile-menu-bg: #1c1c1e;
+  --profile-menu-bg: #18181a;
   --profile-menu-border: rgba(255, 255, 255, 0.08);
   --profile-menu-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
   --profile-menu-text: rgba(255, 255, 255, 0.78);
@@ -529,6 +536,62 @@
   --avatar-open-bg: rgba(255, 255, 255, 0.07);
 
   color-scheme: dark;
+}
+
+/* ==========================================================================
+   LIGHT MODE (mobile override — applied via .light class from useTheme hook)
+   ========================================================================== */
+.light {
+  --bg-page: #ffffff;
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-elevated: #eeeeee;
+  --border-subtle: rgba(0,0,0,0.04);
+  --border-default: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.12);
+  --text-primary: #0a0a0a;
+  --text-secondary: #555555;
+  --text-subtle: #6b7280;
+  --text-muted: #999999;
+  --text-placeholder: #9ca3af;
+  --send-btn-bg: #111111;
+  --send-btn-icon: #ffffff;
+  --user-bubble-bg: #eeeeee;
+  --user-bubble-border: rgba(0,0,0,0.06);
+  --user-bubble-text: #0a0a0a;
+  --sidebar-bg: #fafafa;
+  --sidebar-item-hover: rgba(0,0,0,0.05);
+  --sidebar-item-active: rgba(0,0,0,0.08);
+  --chatbox-bg: #f5f5f5;
+  --dropdown-bg: #ffffff;
+  --overlay: rgba(0,0,0,0.3);
+  --content-card-bg: #ffffff;
+  --content-card-border: rgba(0,0,0,0.08);
+  --surface-glass-elevated: rgba(0,0,0,0.06);
+  --accent-text: rgba(59, 130, 246, 0.90);
+  --chip-bg: #f0f0f0;
+  --chip-border: rgba(0,0,0,0.10);
+  --thinking-pill-bg: #ffffff;
+  --thinking-pill-text: #0055FF;
+  color-scheme: light;
+}
+
+/* StreamingMessage uses hardcoded dark-mode colors.
+   Override them in light mode so assistant text is legible. */
+.light .text-gray-100,
+.light .text-gray-200,
+.light .text-gray-300 {
+  color: var(--text-primary) !important;
+}
+.light .text-gray-400,
+.light .text-gray-500 {
+  color: var(--text-secondary) !important;
+}
+/* Inline code & tool-block inline styles (need !important to beat style attr) */
+.light code {
+  background: rgba(0,0,0,0.06) !important;
+  color: var(--text-primary) !important;
 }
 
 /* --------------------------------------------------------------------------
@@ -714,6 +777,13 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 0 2px var(--border-active);
 }
 
+.no-focus-ring:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 /* --------------------------------------------------------------------------
    Selection
    -------------------------------------------------------------------------- */
@@ -799,6 +869,16 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes token-reveal {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-token-reveal {
+  animation: token-reveal 0.18s ease-out forwards;
+  display: inline;
 }
 
 @keyframes cursor-blink {
@@ -1000,8 +1080,17 @@ h1, h2, h3, h4, h5, h6 {
   animation: slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-left {
+  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes blink {
@@ -1011,4 +1100,20 @@ h1, h2, h3, h4, h5, h6 {
 
 .animate-blink {
   animation: blink 4s ease-in-out infinite;
+}
+
+@keyframes textReveal {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.animate-text-reveal {
+  animation: textReveal 0.35s ease-out forwards;
+}
+
+@keyframes border-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.animate-border-pulse {
+  animation: border-pulse 1.5s ease-in-out infinite;
 }

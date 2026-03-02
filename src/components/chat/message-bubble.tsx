@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { FileText, FileSpreadsheet, File, FileImage, FileCode } from 'lucide-react';
@@ -18,6 +19,8 @@ interface MessageBubbleProps {
   content: string;
   files?: FileAttachment[];
   isStreaming?: boolean;
+  children?: React.ReactNode;
+  hideAvatar?: boolean;
 }
 
 function formatFileSize(bytes: number): string {
@@ -90,7 +93,34 @@ function FileCard({ file }: { file: FileAttachment }) {
   );
 }
 
-export function MessageBubble({ role, content, files, isStreaming }: MessageBubbleProps) {
+/**
+ * Renders streaming text with a subtle fade-in on each newly arrived chunk.
+ * Committed (already-shown) text renders instantly; only the incoming delta animates.
+ */
+function StreamingText({ content }: { content: string }) {
+  const committedRef = useRef(0);
+
+  const committed = content.slice(0, committedRef.current);
+  const incoming  = content.slice(committedRef.current);
+
+  // After React paints this frame, mark everything as committed
+  useEffect(() => {
+    committedRef.current = content.length;
+  });
+
+  return (
+    <span style={{ whiteSpace: 'pre-wrap' }}>
+      {committed}
+      {incoming && (
+        <span key={committedRef.current} className="animate-token-reveal">
+          {incoming}
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function MessageBubble({ role, content, files, isStreaming, children, hideAvatar }: MessageBubbleProps) {
   const isUser = role === 'user';
   const hasFiles = files && files.length > 0;
   const showContent = content.trim().length > 0 || isStreaming;
@@ -100,16 +130,20 @@ export function MessageBubble({ role, content, files, isStreaming }: MessageBubb
       "flex w-full gap-4 animate-fade-in-up",
       isUser ? 'justify-end' : 'justify-start'
     )}>
-      {!isUser && (
-        <Avatar 
-          name="AI" 
-          src="/intelligence-mascot.png" 
-          size="sm" 
+      {!isUser && !hideAvatar && (
+        <Avatar
+          name="AI"
+          src="/intelligence-mascot.png"
+          size="sm"
           className="mt-1 border-none bg-transparent"
         />
       )}
+      {!isUser && hideAvatar && (
+        <div className="w-8 flex-shrink-0 mt-1" />
+      )}
       <div className={cn(
-        "max-w-[85%] flex flex-col",
+        isUser ? "max-w-[75%]" : "max-w-[85%]",
+        "flex flex-col",
         isUser ? "items-end" : "items-start",
         hasFiles ? 'space-y-2' : ''
       )}>
@@ -145,21 +179,25 @@ export function MessageBubble({ role, content, files, isStreaming }: MessageBubb
               content
             ) : (
               <div className="relative">
-                {content.trim() ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                ) : null}
-                {isStreaming && (
-                  <span 
-                    className="inline-block w-1.5 h-5 ml-1 bg-[var(--text-primary)] animate-cursor-blink"
-                    style={{ 
-                      verticalAlign: 'middle',
-                      display: content.trim() ? 'inline-block' : 'block' 
-                    }}
-                  />
+                {isStreaming ? (
+                  <>
+                    {content.trim() ? <StreamingText content={content} /> : null}
+                    <span
+                      className="inline-block w-1.5 h-5 ml-1 bg-[var(--text-primary)] animate-cursor-blink"
+                      style={{ verticalAlign: 'middle', display: content.trim() ? 'inline-block' : 'block' }}
+                    />
+                  </>
+                ) : (
+                  content.trim() ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                  ) : null
                 )}
               </div>
             )}
           </div>
+        )}
+        {!isUser && children && (
+          <div className="w-full">{children}</div>
         )}
       </div>
     </div>

@@ -1,5 +1,15 @@
 {$DOMAIN:localhost} {
-	reverse_proxy localhost:3000
+	# SSE route — disable all buffering for live streaming
+	handle /api/chat* {
+		reverse_proxy localhost:3000 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else
+	handle {
+		reverse_proxy localhost:3000
+	}
 
 	header {
 		X-Content-Type-Options nosniff

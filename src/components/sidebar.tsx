@@ -11,6 +11,7 @@ import {
   Brain,
   ScrollText,
   Plug,
+  GalleryHorizontalEnd,
   Settings,
   ChevronDown,
   PanelLeft,
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 import { trpc } from '@/trpc/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/components/theme-provider';
 
 interface NavItemConfig {
   href: string;
@@ -39,6 +41,7 @@ const navGroups: NavItemConfig[][] = [
   [
     { href: '/app/audit', icon: ScrollText, label: 'Audit', matchPrefix: true },
     { href: '/app/integrations', icon: Plug, label: 'Integrations', matchPrefix: true },
+    { href: '/app/images', icon: GalleryHorizontalEnd, label: 'Gallery', matchPrefix: true },
   ],
 ];
 
@@ -73,6 +76,7 @@ interface SidebarProps {
 
 export const Sidebar = memo(function Sidebar({ expanded, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const { resolvedTheme } = useTheme();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -121,7 +125,13 @@ export const Sidebar = memo(function Sidebar({ expanded, onToggle }: SidebarProp
       {/* Logo row */}
       <div className="flex items-center justify-between h-[48px] px-3" style={{ minWidth: '240px' }}>
         <Link href="/app" className="flex items-center">
-          <Image src="/logo-mark.png" alt="Logo" width={28} height={28} className="object-contain flex-shrink-0" />
+          <Image
+            src={resolvedTheme === 'dark' ? '/elk-logo-dark.png' : '/elk-logo-black.png'}
+            alt="ELK"
+            width={56}
+            height={20}
+            className="object-contain flex-shrink-0"
+          />
         </Link>
         <button
           onClick={onToggle}

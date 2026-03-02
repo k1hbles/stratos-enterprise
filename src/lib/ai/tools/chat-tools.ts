@@ -7,17 +7,18 @@ export function getChatToolDefs(): LLMToolDef[] {
     {
       name: "web_search",
       description:
-        "Search the web for current information. Returns titles, URLs, and snippets.",
+        "Search the web for current information, news, statistics, or research. " +
+        "Use specific keywords. Call this before web_fetch to find relevant URLs.",
       input_schema: {
         type: "object" as const,
         properties: {
           query: {
             type: "string",
-            description: "The search query.",
+            description: "The search query. Be specific.",
           },
-          count: {
+          num_results: {
             type: "number",
-            description: "Number of results (1-10). Default 5.",
+            description: "Number of results to return. Default 5, max 10.",
           },
         },
         required: ["query"],
@@ -26,13 +27,14 @@ export function getChatToolDefs(): LLMToolDef[] {
     {
       name: "web_fetch",
       description:
-        "Fetch and extract text content from a web page URL.",
+        "Read the full content of a specific URL. Use after web_search to read " +
+        "a promising result in detail.",
       input_schema: {
         type: "object" as const,
         properties: {
           url: {
             type: "string",
-            description: "The URL to fetch.",
+            description: "The full URL to fetch including https://",
           },
         },
         required: ["url"],
@@ -55,7 +57,7 @@ export function getChatToolDefs(): LLMToolDef[] {
     {
       name: "generate_document",
       description:
-        "Generate a downloadable file (spreadsheet, Word document, or PDF) from content. Use this immediately whenever the user asks for a file, spreadsheet, report, or document — do not ask for clarification first. For professional PDF reports with charts and tables, use generate_report instead.",
+        "Generate a professional Word document (DOCX) or PDF with native editable text, tables, charts, and web-sourced images. The pipeline internally plans content, sources images, and builds the file natively. Call immediately without searching the web first.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -63,50 +65,30 @@ export function getChatToolDefs(): LLMToolDef[] {
             type: "string",
             description: "The document title (used as filename).",
           },
-          content_markdown: {
+          description: {
             type: "string",
             description:
-              "Full document content in markdown. For xlsx, include a markdown table for structured data. For docx/pdf, use headings (##), bullet points (-), and paragraphs.",
+              "Detailed description of the document: topics, sections, data points, and requirements. Be specific about what content to include.",
           },
           format: {
             type: "string",
-            enum: ["xlsx", "docx", "pdf"],
+            enum: ["docx", "pdf"],
             description:
-              "Output format: xlsx for spreadsheets/data, docx for Word documents, pdf for PDFs (falls back to docx if PDF renderer unavailable).",
+              "Output format: docx for Word documents, pdf for PDFs.",
+          },
+          language: {
+            type: "string",
+            enum: ["en", "id"],
+            description: "Document language. Default en.",
           },
         },
-        required: ["title", "content_markdown", "format"],
+        required: ["title", "description", "format"],
       },
     },
     {
       name: "generate_presentation",
       description:
-        `Generate a PowerPoint (PPTX) presentation. You write raw HTML+CSS for each slide — it gets rendered at 1920×1080 and assembled into PPTX as full-slide images.
-
-HTML RULES:
-- Each slide's html is placed inside <body> which is 1920×1080px with background #0A0F1E.
-- Use ONLY inline styles. No <style> tags, no class names.
-- Use only system fonts: Georgia, Calibri, Arial, Helvetica, sans-serif, serif.
-- All text must use color values (hex). No "currentColor" or "inherit".
-- Use flexbox or grid for layout. No absolute positioning unless intentional.
-- Keep HTML self-contained — no external resources except {{VISUAL}} data URIs.
-
-DESIGN RULES:
-- Pick 2-3 colors and stick to them (e.g. #A78BFA accent, #FFFFFF text, #1A1F3E cards).
-- Vary layouts across slides — no two consecutive slides should look the same.
-- Text must be large: titles 64-80px, body 28-36px, stats 120-200px.
-- Generous whitespace — never fill every pixel.
-- Use border-radius, subtle borders, gradients, and box-shadow for depth.
-
-VISUAL PROMPT SLIDES:
-- If visual_prompt is set, the generated image will replace {{VISUAL}} in the html.
-- Use {{VISUAL}} as the src of an <img> tag for full-bleed backgrounds or hero images.
-- Example: <img src="{{VISUAL}}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />
-
-ANTI-SLOP RULES:
-- No "In today's rapidly evolving..." or "Let's dive in" or "In conclusion".
-- No rainbow gradients. No generic stock-photo prompts.
-- Be specific and direct.`,
+        "Generate a professional PowerPoint (PPTX) presentation with native editable text, real shapes, web-sourced images, and embedded charts. The pipeline internally plans slides, sources images, and builds native PPTX. Call immediately without searching the web first.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -114,36 +96,33 @@ ANTI-SLOP RULES:
             type: "string",
             description: "The presentation title (used as filename).",
           },
-          slides: {
-            type: "array",
-            description: "Array of slides. Each slide has HTML rendered at 1920×1080.",
-            items: {
-              type: "object",
-              properties: {
-                title: {
-                  type: "string",
-                  description: "Slide title (used for metadata/notes, not rendered separately).",
-                },
-                html: {
-                  type: "string",
-                  description: "Complete self-contained HTML for a 1920×1080 viewport. Inline styles only. This is placed inside <body> which has width:1920px, height:1080px, background:#0A0F1E.",
-                },
-                visual_prompt: {
-                  type: "string",
-                  description: "If provided, an AI image is generated and injected into the html replacing {{VISUAL}} as a data URI. Prompt must be hyper-specific: subject, environment, lighting, mood. End with 'no text, no labels, no watermark'.",
-                },
-              },
-              required: ["title", "html"],
-            },
+          description: {
+            type: "string",
+            description:
+              "Detailed description of the presentation: key topics, data points, audience, sections, and requirements. Be specific about what to cover.",
+          },
+          slide_count: {
+            type: "number",
+            description: "Number of slides (8-20). Default 14.",
+          },
+          style: {
+            type: "string",
+            enum: ["dark", "corporate", "minimal"],
+            description: "Visual style. Default dark.",
+          },
+          language: {
+            type: "string",
+            enum: ["en", "id"],
+            description: "Presentation language. Default en.",
           },
         },
-        required: ["title", "slides"],
+        required: ["title", "description"],
       },
     },
     {
       name: "generate_spreadsheet",
       description:
-        "Generate a rich multi-sheet Excel workbook with formatted headers, alternating row colors, number formatting, optional totals row, and embedded charts. Always include at least one chart showing key data visually. Before calling, decide what rows/columns/data to include. Populate with realistic numbers. Minimum 5 rows per sheet. Use Indonesian Rupiah (Rp) formatting for financial data when user writes in Indonesian.",
+        "Generate a professional Excel workbook (XLSX) with formatted data, charts, formulas, and multiple sheets. The pipeline internally plans sheets, generates chart images, and builds the workbook natively. Call immediately without asking for clarification.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -151,66 +130,18 @@ ANTI-SLOP RULES:
             type: "string",
             description: "Workbook title (used as filename).",
           },
-          sheets: {
-            type: "array",
-            description: "Array of sheets to create.",
-            items: {
-              type: "object",
-              properties: {
-                name: {
-                  type: "string",
-                  description: "Sheet tab name (max 31 chars).",
-                },
-                headers: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Column header labels.",
-                },
-                rows: {
-                  type: "array",
-                  items: {
-                    type: "array",
-                    items: { type: ["string", "number"] },
-                  },
-                  description: "Row data as arrays of cell values.",
-                },
-                totals_row: {
-                  type: "boolean",
-                  description: "If true, add a SUM totals row for numeric columns.",
-                },
-                charts: {
-                  type: "array",
-                  description: "Optional charts to embed in the sheet.",
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: {
-                        type: "string",
-                        enum: ["bar", "line", "pie", "doughnut", "radar"],
-                      },
-                      title: { type: "string" },
-                      labels: { type: "array", items: { type: "string" } },
-                      datasets: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            label: { type: "string" },
-                            data: { type: "array", items: { type: "number" } },
-                          },
-                          required: ["label", "data"],
-                        },
-                      },
-                    },
-                    required: ["type", "title", "labels", "datasets"],
-                  },
-                },
-              },
-              required: ["name", "headers", "rows"],
-            },
+          description: {
+            type: "string",
+            description:
+              "Detailed description of the spreadsheet: what data/sheets/charts to include, column structure, metrics. Be specific.",
+          },
+          language: {
+            type: "string",
+            enum: ["en", "id"],
+            description: "Spreadsheet language. Default en.",
           },
         },
-        required: ["title", "sheets"],
+        required: ["title", "description"],
       },
     },
     {
@@ -382,13 +313,75 @@ ANTI-SLOP RULES:
         required: ["prompt"],
       },
     },
+    {
+      name: "write_todo",
+      description:
+        "Create a task checklist for the current conversation. Use at the start of multi-step tasks to track progress. Items persist across messages.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          items: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of task descriptions to add.",
+          },
+          complete: {
+            type: "string",
+            description: "Text of an existing task to mark as done (fuzzy match).",
+          },
+        },
+        required: ["items"],
+      },
+    },
+    {
+      name: "read_todo",
+      description:
+        "Read the current task checklist for this conversation.",
+      input_schema: {
+        type: "object" as const,
+        properties: {},
+        required: [],
+      },
+    },
+    {
+      name: "execute_terminal",
+      description:
+        "Execute a shell command in a sandboxed cloud environment (E2B). Use for file operations, system tasks, or running CLI tools.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          command: {
+            type: "string",
+            description: "The shell command to execute.",
+          },
+          description: {
+            type: "string",
+            description: "Brief human-readable description of what this command does.",
+          },
+        },
+        required: ["command", "description"],
+      },
+    },
+    {
+      name: "execute_python",
+      description:
+        "Execute Python code in a sandboxed cloud environment (E2B). Use for data analysis, calculations, charts, or any computational task.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          code: {
+            type: "string",
+            description: "Python code to execute.",
+          },
+          description: {
+            type: "string",
+            description: "Brief human-readable description of what this code does.",
+          },
+        },
+        required: ["code", "description"],
+      },
+    },
   ];
-}
-
-interface HtmlSlideSpec {
-  title: string;
-  html: string;
-  visual_prompt?: string;
 }
 
 type FileResult = {
@@ -405,90 +398,63 @@ type FileResult = {
 type StringResultWithData = {
   text: string;
   searchResults?: Array<{ title: string; url: string; snippet: string }>;
+  fetchedUrl?: string;
+  fetchedTitle?: string;
 };
 
 export type ToolResult = string | FileResult | StringResultWithData;
 
 export type ToolProgressCallback = (message: string) => void;
 
+export interface ChatToolContext {
+  conversationId?: string;
+  jobId?: string;
+}
+
 /** Execute a chat tool call server-side (no DB context needed) */
 export async function executeChatTool(
   name: string,
   input: Record<string, unknown>,
-  onProgress?: ToolProgressCallback
+  onProgress?: ToolProgressCallback,
+  context?: ChatToolContext
 ): Promise<ToolResult> {
   switch (name) {
     case "web_search": {
       const query = String(input.query);
-      const count = Math.min(Math.max(Number(input.count) || 5, 1), 10);
-      const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-      if (!apiKey) return JSON.stringify({ error: "Search not configured" });
-
+      const numResults = Math.min(Math.max(Number(input.num_results) || 5, 1), 10);
       try {
-        const params = new URLSearchParams({ q: query, count: String(count) });
-        const res = await fetch(
-          `https://api.search.brave.com/res/v1/web/search?${params}`,
-          {
-            headers: {
-              Accept: "application/json",
-              "Accept-Encoding": "gzip",
-              "X-Subscription-Token": apiKey,
-            },
-          }
-        );
-        if (!res.ok) return JSON.stringify({ error: `Search returned ${res.status}` });
-        const body = await res.json();
-        const results: Array<{ title: string; url: string; snippet: string }> =
-          (body.web?.results ?? []).map(
-            (r: { title?: string; url?: string; description?: string }) => ({
-              title: r.title ?? "",
-              url: r.url ?? "",
-              snippet: r.description ?? "",
-            })
-          );
+        const { searchWeb } = await import("@/lib/search/tavily");
+        const response = await searchWeb(query, numResults);
+        const results = response.results.map((r) => ({
+          title: r.title,
+          url: r.url,
+          snippet: r.snippet,
+        }));
         return {
-          text: JSON.stringify({ results, result_count: results.length }),
+          text: JSON.stringify({
+            results,
+            result_count: results.length,
+            ...(response.answer ? { summary: response.answer } : {}),
+          }),
           searchResults: results,
-        };
+        } as StringResultWithData;
       } catch (err) {
-        return JSON.stringify({
-          error: err instanceof Error ? err.message : "Search failed",
-        });
+        return JSON.stringify({ error: err instanceof Error ? err.message : "Search failed" });
       }
     }
 
     case "web_fetch": {
       const url = String(input.url);
       try {
-        const res = await fetch(url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; NightshiftBot/1.0)",
-            Accept: "text/html,application/xhtml+xml,text/plain",
-          },
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (!res.ok) return JSON.stringify({ error: `Fetch returned ${res.status}`, url });
-        const html = await res.text();
-        let content = html
-          .replace(/<script[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[\s\S]*?<\/style>/gi, "")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim();
-        const words = content.split(/\s+/);
-        if (words.length > 5000) {
-          content = words.slice(0, 5000).join(" ") + "…";
-        }
-        return JSON.stringify({
-          content,
-          url,
-          word_count: Math.min(words.length, 5000),
-        });
+        const { fetchPage } = await import("@/lib/search/tavily");
+        const result = await fetchPage(url);
+        return {
+          text: JSON.stringify({ content: result.text, url: result.url, title: result.title, word_count: result.wordCount }),
+          fetchedUrl: result.url,
+          fetchedTitle: result.title,
+        } as StringResultWithData;
       } catch (err) {
-        return JSON.stringify({
-          error: err instanceof Error ? err.message : "Fetch failed",
-          url,
-        });
+        return JSON.stringify({ error: err instanceof Error ? err.message : "Fetch failed", url });
       }
     }
 
@@ -512,345 +478,131 @@ export async function executeChatTool(
 
     case "generate_document": {
       const title = String(input.title ?? "document");
-      const content = String(input.content_markdown ?? "");
-      const format = String(input.format ?? "docx") as "xlsx" | "docx" | "pdf";
+      const description = String(input.description ?? "");
+      const format = String(input.format ?? "docx") as "docx" | "pdf";
+      const language = String(input.language ?? "en");
 
       try {
-        let buffer: Buffer;
-        let ext: string;
-        let mimeType: string;
+        const { runNativePipeline } = await import("./pipeline/run-pipeline");
+        const result = await runNativePipeline({
+          type: "docx",
+          title,
+          description,
+          language,
+          style: "corporate",
+          format,
+          onProgress: (msg) => onProgress?.(msg),
+        });
 
-        if (format === "xlsx") {
-          onProgress?.("Building spreadsheet...");
-          buffer = await generateXLSX(content, title);
-          ext = "xlsx";
-          mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        } else {
-          // LLM-enhanced formatting (fast + cheap)
-          onProgress?.("Structuring document...");
-          let enhancedContent = content;
-          try {
-            const { callLLM } = await import("@/lib/ai/call");
-            const { SECONDARY_MODEL } = await import("@/lib/ai/model-router");
-            const resp = await callLLM({
-              model: SECONDARY_MODEL,
-              messages: [{
-                role: "user" as const,
-                content: `Rewrite as a well-structured professional document with clear heading hierarchy (# ## ###), proper paragraphs, bullets where appropriate, bold for key terms.\n\nTitle: ${title}\n\nContent:\n${content}\n\nReturn ONLY formatted markdown.`,
-              }],
-              systemPrompt: "You are a professional document formatter. Return only markdown. No preamble.",
-            });
-            if (resp.content?.trim()) enhancedContent = resp.content;
-          } catch {
-            // Use original content on LLM failure
-          }
-
-          if (format === "pdf") {
-            onProgress?.("Rendering PDF...");
-            try {
-              const { renderHtmlToPdf } = await import("./renderers/html-to-pdf");
-              const docHtml = markdownToDocHtml(enhancedContent, title);
-              buffer = await renderHtmlToPdf(docHtml);
-              ext = "pdf";
-              mimeType = "application/pdf";
-            } catch {
-              onProgress?.("Falling back to Word...");
-              buffer = await generateDOCX(enhancedContent, title);
-              ext = "docx";
-              mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            }
-          } else {
-            onProgress?.("Generating Word document...");
-            buffer = await generateDOCX(enhancedContent, title);
-            ext = "docx";
-            mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-          }
-        }
+        const ext = "docx";
+        const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
         const sanitized = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
         const fileName = `${sanitized}.${ext}`;
         const storagePath = `outputs/chat/${crypto.randomUUID()}/${fileName}`;
 
-        uploadFile(storagePath, buffer);
+        uploadFile(storagePath, result.buffer);
 
         return {
           file: {
             name: fileName,
-            size: buffer.length,
+            size: result.buffer.length,
             url: `/api/files/output?path=${encodeURIComponent(storagePath)}`,
             mimeType,
           },
         };
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Failed to generate document";
+        console.error(`[generate_document] Pipeline failed for "${title}":`, errMsg);
         return JSON.stringify({
-          error: err instanceof Error ? err.message : "Failed to generate document",
+          error: errMsg,
+          tool_failed: true,
+          instruction: "File generation FAILED. Tell the user the document could not be generated and show the error. Do NOT describe or outline the document content as a substitute.",
         });
       }
     }
 
     case "generate_presentation": {
       const title = String(input.title ?? "Presentation");
-      const slides = (input.slides ?? []) as HtmlSlideSpec[];
+      const description = String(input.description ?? "");
+      const slideCount = Math.min(Math.max(Number(input.slide_count) || 14, 8), 20);
+      const style = String(input.style ?? "dark");
+      const language = String(input.language ?? "en");
 
       try {
-        const { generateSlideVisual } = await import("@/lib/ai/tools/image-gen-gemini");
-        const { renderSlidesToPng } = await import("@/lib/ai/tools/renderers/html-to-slides");
-
-        // ── Phase 1: Generate visuals in parallel ──
-        console.log(`[Pres] Starting phase 1: generating visuals for ${slides.length} slides`);
-        onProgress?.("Generating slide visuals...");
-        const visualResults: (string | null)[] = await Promise.all(
-          slides.slice(0, 10).map(async (s, i) => {
-            if (!s.visual_prompt) return null;
-            onProgress?.(`Generating visual ${i + 1}/${slides.length}...`);
-            return generateSlideVisual(s.visual_prompt);
-          })
-        );
-        console.log(`[Pres] Phase 1 complete: ${visualResults.filter(Boolean).length} visuals generated`);
-
-        // Inject generated images as data URIs into {{VISUAL}} placeholders
-        const processedHtmls = slides.map((s, i) => {
-          let html = s.html;
-          const imgB64 = visualResults[i] ?? null;
-          if (imgB64 && html.includes("{{VISUAL}}")) {
-            html = html.replace(/\{\{VISUAL\}\}/g, `data:image/png;base64,${imgB64}`);
-          }
-          return html;
+        const { runNativePipeline } = await import("./pipeline/run-pipeline");
+        const result = await runNativePipeline({
+          type: "pptx",
+          title,
+          description,
+          language,
+          style,
+          slideCount,
+          onProgress: (msg) => onProgress?.(msg),
         });
-
-        // ── Phase 2: Render slides to PNG via Puppeteer ──
-        console.log(`[Pres] Starting phase 2: rendering ${processedHtmls.length} slides to PNG`);
-        onProgress?.("Rendering slides...");
-        let pngBuffers: Buffer[];
-        try {
-          pngBuffers = await renderSlidesToPng(processedHtmls);
-          console.log(`[Pres] Phase 2 complete: rendered ${pngBuffers.length} slide images`);
-        } catch (renderErr) {
-          console.error('[Pres] Puppeteer rendering FAILED:', renderErr);
-          pngBuffers = [];
-        }
-
-        if (pngBuffers.length === 0) {
-          throw new Error(
-            'No slide images were rendered. Check Puppeteer/Chromium setup. See [Slides] logs for details.'
-          );
-        }
-
-        // ── Phase 3: Assemble PPTX ──
-        console.log(`[Pres] Starting phase 3: assembling PPTX with ${pngBuffers.length} slides`);
-        onProgress?.("Assembling presentation...");
-        const PptxGenJS = (await import("pptxgenjs")).default;
-        const pres = new PptxGenJS();
-        pres.layout = "LAYOUT_WIDE";
-
-        for (let i = 0; i < pngBuffers.length; i++) {
-          const slide = pres.addSlide();
-          slide.addImage({
-            data: `data:image/png;base64,${pngBuffers[i].toString("base64")}`,
-            x: 0,
-            y: 0,
-            w: "100%",
-            h: "100%",
-          });
-        }
-
-        // ── Write file ──
-        onProgress?.("Writing presentation file...");
-        const pptxData = (await pres.write({ outputType: "nodebuffer" })) as Buffer;
-        const buffer = Buffer.from(pptxData);
 
         const sanitized = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
         const fileName = `${sanitized}.pptx`;
         const storagePath = `outputs/chat/${crypto.randomUUID()}/${fileName}`;
 
-        uploadFile(storagePath, buffer);
+        uploadFile(storagePath, result.buffer);
 
         return {
           file: {
             name: fileName,
-            size: buffer.length,
+            size: result.buffer.length,
             url: `/api/files/output?path=${encodeURIComponent(storagePath)}`,
             mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
           },
-          previewHtml: processedHtmls[0],
         };
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Failed to generate presentation";
+        console.error(`[generate_presentation] Pipeline failed for "${title}":`, errMsg);
         return JSON.stringify({
-          error: err instanceof Error ? err.message : "Failed to generate presentation",
+          error: errMsg,
+          tool_failed: true,
+          instruction: "File generation FAILED. Tell the user the presentation could not be generated and show the error. Do NOT describe or outline the slides as a substitute.",
         });
       }
     }
 
     case "generate_spreadsheet": {
       const title = String(input.title ?? "Spreadsheet");
-      const sheets = (input.sheets ?? []) as Array<{
-        name: string;
-        headers: string[];
-        rows: Array<Array<string | number>>;
-        totals_row?: boolean;
-        charts?: Array<{
-          type: "bar" | "line" | "pie" | "doughnut" | "radar";
-          title: string;
-          labels: string[];
-          datasets: { label: string; data: number[] }[];
-        }>;
-      }>;
+      const description = String(input.description ?? "");
+      const language = String(input.language ?? "en");
 
       try {
-        const ExcelJS = (await import("exceljs")).default;
-        const workbook = new ExcelJS.Workbook();
-        workbook.creator = "Stratos";
-        workbook.created = new Date();
-
-        const HEADER_BG = "FF1A1A2E";
-        const HEADER_TEXT = "FFFFFFFF";
-        const ROW_EVEN = "FFF8F8FC";
-        const ROW_ODD = "FFFFFFFF";
-
-        // ── Pass 1: Build all sheets (rows, formatting, auto-width) ──
-        const sheetRefs: Array<{
-          sheet: import("exceljs").Worksheet;
-          charts: typeof sheets[number]["charts"];
-          chartRowOffset: number;
-        }> = [];
-
-        for (let si = 0; si < sheets.length; si++) {
-          const sheetDef = sheets[si];
-          onProgress?.(`Building sheet ${si + 1}: ${sheetDef.name}...`);
-          const sheet = workbook.addWorksheet(sheetDef.name.slice(0, 31));
-
-          // Header row
-          const headerRow = sheet.addRow(sheetDef.headers);
-          headerRow.font = { bold: true, color: { argb: HEADER_TEXT } };
-          headerRow.eachCell((cell) => {
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: HEADER_BG },
-            };
-            cell.alignment = { horizontal: "center", vertical: "middle" };
-          });
-
-          // Freeze top row
-          sheet.views = [{ state: "frozen", ySplit: 1 }];
-
-          // Data rows with alternating colors
-          for (let ri = 0; ri < sheetDef.rows.length; ri++) {
-            const row = sheet.addRow(sheetDef.rows[ri]);
-            const bgColor = ri % 2 === 0 ? ROW_EVEN : ROW_ODD;
-            row.eachCell((cell) => {
-              cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: bgColor },
-              };
-              if (typeof cell.value === "number") {
-                cell.numFmt = "#,##0";
-              }
-            });
-          }
-
-          // Totals row
-          if (sheetDef.totals_row && sheetDef.rows.length > 0) {
-            const totalsData: Array<string | { formula: string }> = [];
-            for (let ci = 0; ci < sheetDef.headers.length; ci++) {
-              const isNumeric = sheetDef.rows.some((r) => typeof r[ci] === "number");
-              if (isNumeric && ci > 0) {
-                const colLetter = String.fromCharCode(65 + ci);
-                const startRow = 2;
-                const endRow = 1 + sheetDef.rows.length;
-                totalsData.push({ formula: `SUM(${colLetter}${startRow}:${colLetter}${endRow})` });
-              } else if (ci === 0) {
-                totalsData.push("Total" as any);
-              } else {
-                totalsData.push("" as any);
-              }
-            }
-            const totalsRow = sheet.addRow(totalsData);
-            totalsRow.font = { bold: true };
-            totalsRow.eachCell((cell) => {
-              cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: HEADER_BG },
-              };
-              cell.font = { bold: true, color: { argb: HEADER_TEXT } };
-              if (typeof cell.value === "object" || typeof cell.value === "number") {
-                cell.numFmt = "#,##0";
-              }
-            });
-          }
-
-          // Auto-width columns
-          sheet.columns.forEach((col) => {
-            let maxLen = 10;
-            col.eachCell?.({ includeEmpty: false }, (cell) => {
-              const len = String(cell.value ?? "").length;
-              if (len > maxLen) maxLen = Math.min(len, 60);
-            });
-            col.width = maxLen + 4;
-          });
-
-          // Collect chart info for pass 2
-          const chartRowOffset = sheetDef.rows.length + (sheetDef.totals_row ? 4 : 3);
-          sheetRefs.push({
-            sheet,
-            charts: sheetDef.charts,
-            chartRowOffset,
-          });
-        }
-
-        // ── Pass 2: Generate and embed all charts sequentially ──
-        const totalCharts = sheetRefs.reduce(
-          (sum, ref) => sum + (ref.charts?.length ?? 0), 0
-        );
-        let chartIdx = 0;
-
-        if (totalCharts > 0) {
-          const { generateChartImage } = await import("./renderers/chart-gen");
-
-          for (const ref of sheetRefs) {
-            if (!ref.charts?.length) continue;
-            let rowOffset = ref.chartRowOffset;
-
-            for (const chartSpec of ref.charts) {
-              chartIdx++;
-              onProgress?.(`Generating chart ${chartIdx} of ${totalCharts}: ${chartSpec.title}...`);
-              const chartBuffer = await generateChartImage(chartSpec);
-              const imageId = workbook.addImage({
-                base64: chartBuffer.toString("base64"),
-                extension: "png",
-              });
-              ref.sheet.addImage(imageId, {
-                tl: { col: 1, row: rowOffset },
-                ext: { width: 600, height: 300 },
-              });
-              rowOffset += 20;
-            }
-          }
-        }
-
-        onProgress?.("Writing workbook...");
-        const buf = await workbook.xlsx.writeBuffer();
-        const buffer = Buffer.from(buf);
+        const { runNativePipeline } = await import("./pipeline/run-pipeline");
+        const result = await runNativePipeline({
+          type: "xlsx",
+          title,
+          description,
+          language,
+          style: "corporate",
+          onProgress: (msg) => onProgress?.(msg),
+        });
 
         const sanitized = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
         const fileName = `${sanitized}.xlsx`;
         const storagePath = `outputs/chat/${crypto.randomUUID()}/${fileName}`;
 
-        uploadFile(storagePath, buffer);
+        uploadFile(storagePath, result.buffer);
 
         return {
           file: {
             name: fileName,
-            size: buffer.length,
+            size: result.buffer.length,
             url: `/api/files/output?path=${encodeURIComponent(storagePath)}`,
             mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           },
         };
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Failed to generate spreadsheet";
+        console.error(`[generate_spreadsheet] Pipeline failed for "${title}":`, errMsg);
         return JSON.stringify({
-          error: err instanceof Error ? err.message : "Failed to generate spreadsheet",
+          error: errMsg,
+          tool_failed: true,
+          instruction: "File generation FAILED. Tell the user the spreadsheet could not be generated and show the error. Do NOT describe or outline the data as a substitute.",
         });
       }
     }
@@ -860,8 +612,12 @@ export async function executeChatTool(
         const { generateReport } = await import("@/lib/ai/tools/generate-report");
         return await generateReport(input as any, onProgress);
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Failed to generate report";
+        console.error(`[generate_report] Failed:`, errMsg);
         return JSON.stringify({
-          error: err instanceof Error ? err.message : "Failed to generate report",
+          error: errMsg,
+          tool_failed: true,
+          instruction: "File generation FAILED. Tell the user the report could not be generated and show the error. Do NOT describe or outline the report content as a substitute.",
         });
       }
     }
@@ -870,24 +626,173 @@ export async function executeChatTool(
       const prompt = String(input.prompt ?? "");
       const size = (input.size as "1024x1024" | "1792x1024" | "1024x1792") ?? "1024x1024";
 
+      // Emit shimmer tag — renders as "Creating image..." animation
+      onProgress?.(`<image_generating>`);
+
       try {
         const { generateImage } = await import("@/lib/ai/tools/image-gen");
         const result = await generateImage(prompt, size);
+
         if (!result) {
+          onProgress?.(`</image_generating>`);
+          onProgress?.(`\nImage generation failed. Please try again.`);
           return JSON.stringify({ error: "Image generation unavailable (OPENAI_API_KEY not set or generation failed)" });
         }
-        return {
-          file: {
-            name: `image_${crypto.randomUUID().slice(0, 8)}.png`,
-            size: result.buffer.length,
-            url: result.url,
-            mimeType: "image/png",
-          },
-        };
+
+        // Convert to base64 data URL — no auth issues, renders instantly
+        const base64DataUrl = `data:image/png;base64,${result.buffer.toString("base64")}`;
+
+        // Persist to job_results for gallery
+        const imageId = crypto.randomUUID();
+        try {
+          const { getDb } = await import("@/lib/db");
+          const db = getDb();
+          db.prepare(`
+            INSERT INTO job_results (id, job_id, result_type, file_name, storage_path, file_size, content_markdown)
+            VALUES (?, ?, 'image', ?, ?, ?, ?)
+          `).run(
+            imageId,
+            context?.jobId ?? 'standalone',
+            `image_${Date.now()}.png`,
+            result.storagePath,
+            result.buffer.length,
+            JSON.stringify({ prompt, model: 'dall-e-3', url: result.url })
+          );
+        } catch (err) {
+          console.error('[generate_image] DB persist failed:', err);
+        }
+
+        // Close shimmer and emit image block
+        onProgress?.(`</image_generating>`);
+        onProgress?.(`<image_result src="${base64DataUrl}" prompt="${prompt.replace(/"/g, "'")}" id="${imageId}">`);
+        onProgress?.(`</image_result>`);
+
+        return JSON.stringify({ url: result.url, storagePath: result.storagePath, imageId });
       } catch (err) {
+        onProgress?.(`</image_generating>`);
         return JSON.stringify({
           error: err instanceof Error ? err.message : "Failed to generate image",
         });
+      }
+    }
+
+    case "write_todo": {
+      const conversationId = context?.conversationId;
+      if (!conversationId) {
+        return JSON.stringify({ error: "No conversation context for todos" });
+      }
+      const items = (input.items as string[]) ?? [];
+      const completeText = input.complete as string | undefined;
+
+      try {
+        const { addTodo, completeTodo, readTodos } = await import("@/lib/ai/tools/todo");
+
+        for (const text of items) {
+          addTodo(conversationId, text);
+        }
+        if (completeText) {
+          completeTodo(conversationId, completeText);
+        }
+
+        const all = readTodos(conversationId);
+        const done = all.filter((t) => t.done).length;
+        const total = all.length;
+
+        // Emit progress for each todo item
+        for (const t of all) {
+          onProgress?.(`${t.done ? "[x]" : "[ ]"} ${t.text}`);
+        }
+
+        // Emit metadata for the progress counter
+        onProgress?.(JSON.stringify({ __type: "todos_update", todos: all }));
+
+        return JSON.stringify({
+          success: true,
+          total,
+          done,
+          items: all.map((t) => ({ text: t.text, done: t.done })),
+        });
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : "Failed to write todos" });
+      }
+    }
+
+    case "read_todo": {
+      const conversationId = context?.conversationId;
+      if (!conversationId) {
+        return JSON.stringify({ error: "No conversation context for todos" });
+      }
+      try {
+        const { readTodos } = await import("@/lib/ai/tools/todo");
+        const all = readTodos(conversationId);
+        const done = all.filter((t) => t.done).length;
+
+        for (const t of all) {
+          onProgress?.(`${t.done ? "[x]" : "[ ]"} ${t.text}`);
+        }
+
+        onProgress?.(JSON.stringify({ __type: "todos_update", todos: all }));
+
+        return JSON.stringify({
+          total: all.length,
+          done,
+          items: all.map((t) => ({ text: t.text, done: t.done })),
+        });
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : "Failed to read todos" });
+      }
+    }
+
+    case "execute_terminal": {
+      const command = String(input.command ?? "");
+      const description = String(input.description ?? "Running command");
+
+      try {
+        onProgress?.(`$ ${command}`);
+        const { Sandbox } = await import("@e2b/code-interpreter");
+        const sandbox = await Sandbox.create();
+        try {
+          const wrapperCode = `import subprocess; r = subprocess.run(${JSON.stringify(command)}, shell=True, capture_output=True, text=True, timeout=30)\nprint(r.stdout[-2000:] if len(r.stdout) > 2000 else r.stdout)\nif r.stderr: print(r.stderr[-500:])`;
+          const exec = await sandbox.runCode(wrapperCode);
+          const output = exec.results.map((r) => r.text ?? "").join("\n") +
+            (exec.logs.stdout.join("\n")) +
+            (exec.logs.stderr.join("\n"));
+          const truncated = output.slice(0, 2000);
+          onProgress?.(truncated || "(no output)");
+          return JSON.stringify({ success: true, output: truncated, description });
+        } finally {
+          await sandbox.kill();
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Terminal execution failed";
+        onProgress?.(`Error: ${errMsg}`);
+        return JSON.stringify({ error: errMsg });
+      }
+    }
+
+    case "execute_python": {
+      const code = String(input.code ?? "");
+      const description = String(input.description ?? "Running Python");
+
+      try {
+        onProgress?.("Executing Python code...");
+        const { Sandbox } = await import("@e2b/code-interpreter");
+        const sandbox = await Sandbox.create();
+        try {
+          const exec = await sandbox.runCode(code);
+          const output = exec.results.map((r) => r.text ?? "").join("\n") +
+            (exec.logs.stdout.join("\n")) +
+            (exec.logs.stderr.join("\n"));
+          const truncated = output.slice(0, 2000);
+          onProgress?.(truncated || "(no output)");
+          return JSON.stringify({ success: true, output: truncated, description });
+        } finally {
+          await sandbox.kill();
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Python execution failed";
+        onProgress?.(`Error: ${errMsg}`);
+        return JSON.stringify({ error: errMsg });
       }
     }
 
@@ -896,201 +801,3 @@ export async function executeChatTool(
   }
 }
 
-async function generateXLSX(content: string, title: string): Promise<Buffer> {
-  const ExcelJS = (await import("exceljs")).default;
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(title.slice(0, 31));
-
-  const lines = content.split("\n").filter((l) => l.trim());
-  const tableLines = lines.filter((l) => l.includes("|"));
-
-  if (tableLines.length > 2) {
-    for (let i = 0; i < tableLines.length; i++) {
-      const cells = tableLines[i]
-        .split("|")
-        .map((c) => c.trim())
-        .filter(Boolean);
-      if (cells.every((c) => /^[-:]+$/.test(c))) continue;
-
-      const row = sheet.addRow(cells);
-      if (i === 0) {
-        row.font = { bold: true, color: { argb: "FFFFFFFF" } };
-        row.eachCell((cell) => {
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FF1F2937" },
-          };
-        });
-      }
-    }
-  } else {
-    sheet.addRow([title]).font = { bold: true, size: 14 };
-    sheet.addRow([]);
-    for (const line of lines) {
-      sheet.addRow([line]);
-    }
-  }
-
-  sheet.columns.forEach((col) => {
-    let maxLen = 10;
-    col.eachCell?.({ includeEmpty: false }, (cell) => {
-      const len = String(cell.value ?? "").length;
-      if (len > maxLen) maxLen = Math.min(len, 60);
-    });
-    col.width = maxLen + 2;
-  });
-
-  const buf = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buf);
-}
-
-async function generateDOCX(content: string, title: string): Promise<Buffer> {
-  const docx = await import("docx");
-  const { Document, Paragraph, TextRun, HeadingLevel, Packer } = docx;
-
-  const children: InstanceType<typeof Paragraph>[] = [];
-
-  children.push(
-    new Paragraph({
-      text: title,
-      heading: HeadingLevel.TITLE,
-      spacing: { after: 300 },
-    })
-  );
-
-  const lines = content.split("\n");
-  for (const line of lines) {
-    if (line.startsWith("# ")) {
-      children.push(
-        new Paragraph({
-          text: line.replace(/^#+\s*/, ""),
-          heading: HeadingLevel.HEADING_1,
-          spacing: { before: 240, after: 120 },
-        })
-      );
-    } else if (line.startsWith("## ")) {
-      children.push(
-        new Paragraph({
-          text: line.replace(/^#+\s*/, ""),
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 200, after: 100 },
-        })
-      );
-    } else if (line.startsWith("### ")) {
-      children.push(
-        new Paragraph({
-          text: line.replace(/^#+\s*/, ""),
-          heading: HeadingLevel.HEADING_3,
-          spacing: { before: 160, after: 80 },
-        })
-      );
-    } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: line.replace(/^[-*]\s*/, "") })],
-          bullet: { level: 0 },
-        })
-      );
-    } else if (line.trim()) {
-      const parts = line.split(/\*\*(.*?)\*\*/);
-      const runs: InstanceType<typeof TextRun>[] = [];
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i]) {
-          runs.push(new TextRun({ text: parts[i], bold: i % 2 === 1 }));
-        }
-      }
-      children.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
-    }
-  }
-
-  const doc = new Document({ sections: [{ children }] });
-  const buf = await Packer.toBuffer(doc);
-  return Buffer.from(buf);
-}
-
-async function generatePDF(content: string, title: string): Promise<Buffer> {
-  const ReactPDF = await import("@react-pdf/renderer");
-  const React = (await import("react")).default;
-  const { Document, Page, Text, View, StyleSheet } = ReactPDF;
-
-  const styles = StyleSheet.create({
-    page: { padding: 50, fontSize: 11, fontFamily: "Helvetica" },
-    title: { fontSize: 22, marginBottom: 20, fontFamily: "Helvetica-Bold" },
-    heading: { fontSize: 14, marginTop: 15, marginBottom: 8, fontFamily: "Helvetica-Bold" },
-    paragraph: { marginBottom: 6, lineHeight: 1.5 },
-    listItem: { marginBottom: 4, paddingLeft: 15 },
-  });
-
-  const elements: React.ReactElement[] = [];
-  elements.push(React.createElement(Text, { style: styles.title, key: "title" }, title));
-
-  const lines = content.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith("# ") || line.startsWith("## ") || line.startsWith("### ")) {
-      elements.push(
-        React.createElement(Text, { style: styles.heading, key: `h-${i}` }, line.replace(/^#+\s*/, ""))
-      );
-    } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      elements.push(
-        React.createElement(Text, { style: styles.listItem, key: `li-${i}` }, `• ${line.replace(/^[-*]\s*/, "")}`)
-      );
-    } else if (line.trim()) {
-      elements.push(
-        React.createElement(Text, { style: styles.paragraph, key: `p-${i}` }, line.replace(/\*\*(.*?)\*\*/g, "$1"))
-      );
-    }
-  }
-
-  const doc = React.createElement(
-    Document,
-    {},
-    React.createElement(Page, { size: "A4", style: styles.page }, React.createElement(View, {}, ...elements))
-  );
-
-  const pdfBuf = await ReactPDF.renderToBuffer(doc as any);
-  return Buffer.from(pdfBuf);
-}
-
-function markdownToDocHtml(markdown: string, title: string): string {
-  const lines = markdown.split("\n");
-  let html = "";
-  for (const line of lines) {
-    if (line.startsWith("# ")) {
-      html += `<h1>${escapeDocHtml(line.slice(2))}</h1>`;
-    } else if (line.startsWith("## ")) {
-      html += `<h2>${escapeDocHtml(line.slice(3))}</h2>`;
-    } else if (line.startsWith("### ")) {
-      html += `<h3>${escapeDocHtml(line.slice(4))}</h3>`;
-    } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      html += `<li>${line.slice(2).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")}</li>`;
-    } else if (line.trim()) {
-      html += `<p>${line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")}</p>`;
-    }
-  }
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    body { font-family: Georgia, serif; max-width: 720px; margin: 60px auto;
-           color: #1a1a1a; font-size: 14px; line-height: 1.8; background: #fff; }
-    h1 { font-size: 32px; margin-bottom: 8px; color: #111; }
-    h2 { font-size: 22px; margin-top: 36px; margin-bottom: 12px;
-         border-bottom: 1px solid #ddd; padding-bottom: 6px; }
-    h3 { font-size: 16px; margin-top: 24px; margin-bottom: 8px; color: #333; }
-    p { margin-bottom: 14px; }
-    li { margin-bottom: 6px; margin-left: 24px; list-style: disc; }
-    strong { color: #111; }
-    @page { margin: 60px 72px; }
-  </style></head><body>
-  <h1>${escapeDocHtml(title)}</h1>
-  ${html}
-  </body></html>`;
-}
-
-function escapeDocHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}

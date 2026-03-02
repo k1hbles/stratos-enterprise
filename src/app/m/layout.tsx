@@ -9,14 +9,18 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Stratos',
+  title: 'ELK',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Stratos',
+    title: 'ELK',
   },
   manifest: '/manifest.json',
 };
+
+// Static inline script — no user input, safe from XSS.
+// Sets the theme class before first paint to prevent flash.
+const themeInitScript = `(function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.classList.add(t)})()`;
 
 export default function MobileLayout({
   children,
@@ -24,9 +28,10 @@ export default function MobileLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex justify-center bg-black min-h-screen font-sans text-white">
+    <div className="mobile-shell flex justify-center bg-[var(--bg-page)] min-h-screen font-sans text-[var(--text-primary)]">
+      <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       <div
-        className="w-full sm:max-w-md bg-[#0f0f0f] relative overflow-hidden flex flex-col shadow-2xl sm:border-x border-[#1c1c1e]"
+        className="w-full sm:max-w-md bg-[var(--bg-page)] relative overflow-hidden flex flex-col shadow-2xl sm:border-x border-[var(--border-default)]"
         style={{
           height: '100dvh',
           paddingTop: 'env(safe-area-inset-top)',

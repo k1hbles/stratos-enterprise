@@ -1,7 +1,14 @@
 import type Database from "better-sqlite3";
 
 export function runMigrations(db: Database.Database): void {
-  // Check if migrations have already run
+  // Safe incremental column additions — idempotent, run every startup
+  // (better-sqlite3 db.exec runs SQL directly, no shell involved)
+  try { db.exec("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'complete'"); } catch (_) {}
+  try { db.exec("ALTER TABLE decisions ADD COLUMN status TEXT DEFAULT 'pending'"); } catch (_) {}
+  try { db.exec("ALTER TABLE decisions ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))"); } catch (_) {}
+  try { db.exec("ALTER TABLE conversations ADD COLUMN todos TEXT DEFAULT '[]'"); } catch (_) {}
+
+  // Check if initial schema has already been created
   const tableExists = db
     .prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
@@ -55,6 +62,7 @@ export function runMigrations(db: Database.Database): void {
       conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
+      status TEXT DEFAULT 'complete',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -319,10 +327,6 @@ export function runMigrations(db: Database.Database): void {
   `;
 
   db.exec(sql);
-
-  // Safe ALTER additions — wrapped in try/catch since columns may already exist
-  try { db.exec("ALTER TABLE decisions ADD COLUMN status TEXT DEFAULT 'pending'"); } catch {}
-  try { db.exec("ALTER TABLE decisions ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))"); } catch {}
 
   // Settings table
   db.exec(`

@@ -31,11 +31,18 @@ export interface FileExpandData {
   previewHtml?: string;
 }
 
-export type ExpandData = SearchExpandData | FileExpandData;
+export interface FetchExpandData {
+  type: "fetch_result";
+  url: string;
+  title: string;
+}
+
+export type ExpandData = SearchExpandData | FileExpandData | FetchExpandData;
 
 // ── SSE event types ─────────────────────────────────────────────────────────
 
 export type SSEEvent =
+  | { type: "thinking"; status: "start" | "stop" }
   | { type: "text"; text: string }
   | { type: "tool_call"; toolName: string; toolId: string; args?: Record<string, unknown> }
   | { type: "tool_progress"; toolId: string; toolName: string; message: string }

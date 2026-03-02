@@ -4,36 +4,36 @@ import { useState } from 'react';
 import {
   FileText, BarChart3, Search, Globe, FileCheck,
   FileSpreadsheet, File, Loader2, Lightbulb,
-  CheckCircle2, ChevronRight, Copy, ThumbsUp, ThumbsDown,
-  ArrowDown, ExternalLink, Download, FileType
+  ChevronDown, Copy, ThumbsUp, ThumbsDown,
+  ExternalLink, Download, RefreshCw, Brain,
+  Database, Terminal, Clock, Check,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 
-/* ── Shared types ──────────────────────────────────────────────── */
+/* ── Types ─────────────────────────────────────────────────────── */
 export interface SearchExpandData {
-  type: "search_results";
+  type: 'search_results';
   results: Array<{ title: string; url: string; snippet: string }>;
 }
-
 export interface FileExpandData {
-  type: "file_output";
-  fileType: "pdf" | "xlsx" | "pptx" | "docx";
+  type: 'file_output';
+  fileType: 'pdf' | 'xlsx' | 'pptx' | 'docx';
   fileName: string;
   downloadUrl: string;
   previewHtml?: string;
 }
-
 export type ExpandData = SearchExpandData | FileExpandData;
 
-export interface StepData {
-  toolId: string;
+export interface ActionItem {
+  id: string;
   toolName: string;
   status: 'running' | 'completed';
   summary?: string;
-  detail?: string;
-  args?: Record<string, unknown>;
   expandData?: ExpandData;
 }
+export interface TextBlock        { type: 'text'; content: string; }
+export interface ActionGroupBlock { type: 'actionGroup'; actions: ActionItem[]; }
+export interface DiagramBlock     { type: 'diagram'; definition: string; title?: string; }
+export type Block = TextBlock | ActionGroupBlock | DiagramBlock;
 
 export interface TaskFile {
   fileName: string;
@@ -41,349 +41,212 @@ export interface TaskFile {
   fileSize?: number;
 }
 
-/* ── Tool icon map ─────────────────────────────────────────────── */
-const TOOL_ICONS: Record<string, React.ElementType> = {
-  parse_file: FileText,
-  create_chart: BarChart3,
-  generate_pdf: FileText,
-  generate_document: File,
-  generate_spreadsheet: FileSpreadsheet,
-  generate_report: FileText,
-  generate_presentation: File,
-  verify_output: FileCheck,
-  web_search: Search,
-  web_fetch: Globe,
-  think: Lightbulb,
+/* ── Tool config ────────────────────────────────────────────────── */
+const TOOL_CONFIG: Record<string, { icon: React.ElementType; label: string }> = {
+  web_search:            { icon: Search,          label: 'Searching the web'    },
+  web_scrape:            { icon: Globe,           label: 'Reading page'         },
+  web_fetch:             { icon: Globe,           label: 'Fetching URL'         },
+  think:                 { icon: Brain,           label: 'Thinking'             },
+  query_memory:          { icon: Database,        label: 'Recalling memory'     },
+  store_memory:          { icon: Database,        label: 'Saving to memory'     },
+  get_current_time:      { icon: Clock,           label: 'Checking time'        },
+  parse_file:            { icon: FileText,        label: 'Reading file'         },
+  read_uploaded_file:    { icon: FileText,        label: 'Reading file'         },
+  execute_python:        { icon: Terminal,        label: 'Running code'         },
+  create_chart:          { icon: BarChart3,       label: 'Creating chart'       },
+  generate_pdf:          { icon: FileText,        label: 'Generating PDF'       },
+  generate_document:     { icon: File,            label: 'Writing document'     },
+  generate_spreadsheet:  { icon: FileSpreadsheet, label: 'Building spreadsheet' },
+  generate_report:       { icon: FileText,        label: 'Compiling report'     },
+  generate_presentation: { icon: File,            label: 'Creating slides'      },
+  verify_output:         { icon: FileCheck,       label: 'Verifying output'     },
 };
 
-/* ── Expandable Result Content ────────────────────────────────── */
+function getToolConfig(toolName: string) {
+  return TOOL_CONFIG[toolName] ?? { icon: Lightbulb, label: toolName.replace(/_/g, ' ') };
+}
+
+/* ── Expand content ─────────────────────────────────────────────── */
 function ExpandContent({ data }: { data: ExpandData }) {
   if (data.type === 'search_results') {
     return (
-      <div className="space-y-4 pt-1">
-        {data.results.slice(0, 5).map((res, i) => (
-          <div key={i} className="group flex flex-col gap-1">
-            <a 
-              href={res.url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-[13px] font-semibold text-white hover:underline decoration-white/30 underline-offset-2 flex items-center gap-1.5"
-            >
-              {res.title}
-              <ExternalLink size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-            </a>
-            <span className="font-mono text-[11px] text-[#A78BFA] truncate max-w-full">
-              {res.url}
-            </span>
-            <p className="text-[12px] text-white/60 leading-relaxed line-clamp-2">
-              {res.snippet}
-            </p>
-          </div>
-        ))}
+      <div className="flex flex-col gap-3 pt-2 pb-1">
+        {data.results.slice(0, 4).map((r, i) => {
+          let hostname = '';
+          try { hostname = new URL(r.url).hostname; } catch { /* ignore */ }
+          return (
+            <div key={i} className="flex flex-col gap-0.5">
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[12px] font-medium leading-snug"
+                style={{ color: 'rgba(255,255,255,0.80)', textDecoration: 'none' }}
+              >
+                {hostname && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=16`}
+                    alt=""
+                    width={14}
+                    height={14}
+                    className="flex-shrink-0 rounded-sm"
+                  />
+                )}
+                <span className="flex-1">{r.title}</span>
+                <ExternalLink size={10} className="flex-shrink-0 mt-0.5 opacity-50" />
+              </a>
+              <span className="font-mono text-[10px] truncate" style={{ color: '#A78BFA' }}>
+                {r.url}
+              </span>
+              <p className="text-[11px] leading-relaxed line-clamp-2" style={{ color: 'rgba(255,255,255,0.40)' }}>
+                {r.snippet}
+              </p>
+            </div>
+          );
+        })}
       </div>
     );
   }
-
   if (data.type === 'file_output') {
-    const isPptx = data.fileType === 'pptx';
-    const isXlsx = data.fileType === 'xlsx';
-    const isPdf = data.fileType === 'pdf';
-    
     return (
-      <div className="space-y-3 pt-1">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="truncate text-[13px] font-medium text-white/90">
-              {data.fileName}
-            </span>
-            <span className="px-1.5 py-0.5 rounded-sm bg-[#6366F1]/20 text-[#6366F1] text-[10px] font-bold tracking-wider uppercase">
-              {data.fileType}
-            </span>
-          </div>
-          <a 
-            href={data.downloadUrl}
-            download={data.fileName}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-[12px] text-[#6366F1] hover:bg-[#6366F1]/10 transition-colors shrink-0"
+      <div className="flex items-center justify-between gap-2 pt-2 pb-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[12px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.80)' }}>
+            {data.fileName}
+          </span>
+          <span
+            className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase flex-shrink-0"
+            style={{ background: 'rgba(99,102,241,0.18)', color: '#818CF8' }}
           >
-            <Download size={13} strokeWidth={2} />
-            Download
-          </a>
+            {data.fileType}
+          </span>
         </div>
-        
-        {data.previewHtml && (
-          <div className="relative mt-2 rounded-md border border-white/5 overflow-hidden bg-black/20">
-            <iframe 
-              srcDoc={data.previewHtml}
-              className="w-full max-h-[200px] border-0 pointer-events-none"
-              title="File Preview"
-              sandbox="allow-scripts"
-            />
-            <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#111118] to-transparent pointer-events-none" />
-          </div>
-        )}
+        <a
+          href={data.downloadUrl}
+          download={data.fileName}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] flex-shrink-0"
+          style={{ color: '#818CF8', background: 'rgba(99,102,241,0.10)' }}
+        >
+          <Download size={11} strokeWidth={2} />
+          Download
+        </a>
       </div>
     );
   }
-
   return null;
 }
 
-/* ── SSE Action Card (Kimi-style) ─────────────────────────────── */
-export function SSEActionCard({ step, isLast = false }: { step: StepData; isLast?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const Icon = TOOL_ICONS[step.toolName] || FileText;
-  const hasExpandData = !!step.expandData;
+/* ── Single action row ──────────────────────────────────────────── */
+function ActionRow({ action, isLast }: { action: ActionItem; isLast: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { icon: Icon, label } = getToolConfig(action.toolName);
+  const isRunning = action.status === 'running';
+  const canExpand = !isRunning && !!action.expandData;
+  const displayLabel = action.summary || label;
 
   return (
-    <div
-      className="animate-fade-in-up flex flex-col overflow-hidden"
-      style={{
-        borderBottom: isLast ? 'none' : '0.5px solid rgba(255,255,255,0.06)',
-      }}
-    >
+    <div style={{ borderBottom: isLast ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
       <button
-        onClick={() => hasExpandData && setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 text-left hover:bg-white/[0.02] transition-colors duration-150"
+        onClick={() => canExpand && setOpen((o) => !o)}
+        className="flex items-center gap-2 w-full text-left px-3 py-2 transition-colors duration-150"
         style={{
-          padding: '8px 12px',
-          height: '36px',
-          cursor: hasExpandData ? 'pointer' : 'default',
-          fontSize: '14px',
-          color: 'rgba(255,255,255,0.56)',
           background: 'transparent',
           border: 'none',
+          cursor: canExpand ? 'pointer' : 'default',
+          minHeight: '36px',
         }}
+        onMouseEnter={(e) => { if (canExpand) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
-        <div className="flex-shrink-0">
-          {step.status === 'running' ? (
-            <div className="relative">
-              <div className="absolute inset-0 bg-white/20 rounded-full animate-ping" style={{ opacity: 0.4 }} />
-              <Loader2 size={14} strokeWidth={1.5} className="animate-spin relative z-10" style={{ color: 'rgba(255,255,255,0.50)' }} />
-            </div>
-          ) : (
-            <Icon size={14} strokeWidth={1.5} style={{ color: 'rgba(255,255,255,0.40)' }} />
-          )}
+        <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {isRunning
+            ? <Loader2 size={13} strokeWidth={1.5} className="animate-spin" style={{ color: 'rgba(167,139,250,0.9)' }} />
+            : <Check size={12} strokeWidth={2.5} style={{ color: 'rgba(255,255,255,0.22)' }} />
+          }
         </div>
-        <span className="flex-1 min-w-0 truncate">
-          {step.toolName.replace(/_/g, ' ')}
+        <Icon size={13} strokeWidth={1.5} style={{ flexShrink: 0, color: isRunning ? 'rgba(255,255,255,0.60)' : 'rgba(255,255,255,0.25)' }} />
+        <span className="flex-1 truncate text-[12.5px]" style={{ color: isRunning ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.35)' }}>
+          {displayLabel}
         </span>
-        {step.summary && (
-          <span className="flex-shrink-0 text-[12px]" style={{ color: 'rgba(255,255,255,0.32)' }}>
-            {step.summary}
-          </span>
-        )}
-        {hasExpandData && (
-          <motion.div
-            animate={{ rotate: expanded ? 180 : 0 }}
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="flex-shrink-0"
-          >
-            <ChevronRight
-              size={14}
-              strokeWidth={1.5}
-              style={{ color: 'rgba(255,255,255,0.32)' }}
-            />
-          </motion.div>
+        {canExpand && (
+          <ChevronDown
+            size={12}
+            strokeWidth={1.5}
+            className="flex-shrink-0 transition-transform duration-200"
+            style={{ color: 'rgba(255,255,255,0.25)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
         )}
       </button>
-
-      <AnimatePresence>
-        {expanded && step.expandData && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25 }}
-            className="px-4 pb-4 pt-3 overflow-hidden"
-            style={{
-              background: 'rgba(255,255,255,0.01)',
-              borderTop: '1px solid rgba(255,255,255,0.05)',
-            }}
-          >
-            <ExpandContent data={step.expandData} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && action.expandData && (
+        <div className="px-3 pb-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <ExpandContent data={action.expandData} />
+        </div>
+      )}
     </div>
   );
 }
 
-/* ── Task summary header (first row in container) ─────────────── */
-export function TaskHeaderRow({ summary }: { summary: string }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <button
-      onClick={() => setExpanded(!expanded)}
-      className="w-full flex items-center gap-2 text-left hover:bg-white/[0.02] transition-colors duration-150 animate-fade-in-up"
-      style={{
-        padding: '8px 12px',
-        height: '36px',
-        cursor: 'pointer',
-        fontSize: '14px',
-        color: 'rgba(255,255,255,0.84)',
-        borderBottom: '0.5px solid rgba(255,255,255,0.06)',
-        background: 'transparent',
-        border: 'none',
-        borderBlockEnd: '0.5px solid rgba(255,255,255,0.06)',
-      }}
-    >
-      <div
-        className="flex-shrink-0 w-[18px] h-[18px] rounded-full flex items-center justify-center"
-        style={{ background: 'rgba(52,199,89,0.15)' }}
-      >
-        <Lightbulb size={10} strokeWidth={2} style={{ color: 'rgb(52,199,89)' }} />
-      </div>
-      <span className="flex-1 min-w-0 truncate font-medium">
-        {summary}
-      </span>
-      <ChevronRight
-        size={14}
-        strokeWidth={1.5}
-        className="flex-shrink-0 transition-transform duration-200"
-        style={{
-          color: 'rgba(255,255,255,0.32)',
-          transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
-        }}
-      />
-    </button>
-  );
-}
-
-/* ── Steps group container (Kimi container-block) ─────────────── */
-export function StepsGroupContainer({
-  taskSummary,
-  steps,
-}: {
-  taskSummary?: string;
-  steps: StepData[];
-}) {
+/* ── Action group card ──────────────────────────────────────────── */
+// Renders as a full-width block — fixes the "floating up" issue.
+// The parent in conversation-view.tsx wraps this in a div with ml-[48px].
+export function ActionGroupCard({ actions }: { actions: ActionItem[] }) {
+  if (!actions?.length) return null;
   return (
     <div
-      className="animate-fade-in-up"
+      className="w-full rounded-xl overflow-hidden"
       style={{
-        border: '0.5px solid rgba(255,255,255,0.12)',
-        borderRadius: '10px',
-        background: 'transparent',
-        overflow: 'hidden',
-        marginBottom: '12px',
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.07)',
       }}
     >
-      {taskSummary && <TaskHeaderRow summary={taskSummary} />}
-      {steps.map((step, i) => (
-        <SSEActionCard
-          key={step.toolId}
-          step={step}
-          isLast={i === steps.length - 1}
-        />
+      {actions.map((action, i) => (
+        <ActionRow key={action.id} action={action} isLast={i === actions.length - 1} />
       ))}
     </div>
   );
 }
 
-/* ── File output card (Kimi-style compact) ────────────────────── */
-export function FileOutputCard({
-  file,
-  onClick,
-}: {
-  file: TaskFile;
-  onClick: () => void;
-}) {
+/* ── File output card ───────────────────────────────────────────── */
+export function FileOutputCard({ file, onClick }: { file: TaskFile; onClick: () => void }) {
   const ext = file.fileName.split('.').pop()?.toLowerCase() ?? '';
-  let iconKey = 'generate_document';
-  if (['xlsx', 'xls', 'csv'].includes(ext)) iconKey = 'generate_spreadsheet';
-  else if (ext === 'pdf') iconKey = 'generate_pdf';
-  const Icon = TOOL_ICONS[iconKey] || File;
+  let cfgKey = 'generate_document';
+  if (['xlsx', 'xls', 'csv'].includes(ext)) cfgKey = 'generate_spreadsheet';
+  else if (ext === 'pdf') cfgKey = 'generate_pdf';
+  const { icon: Icon } = getToolConfig(cfgKey);
 
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2 text-left transition-colors duration-150 animate-fade-in-up"
+      className="flex items-center gap-2.5 text-left transition-colors duration-150 w-full"
       style={{
-        background: 'rgba(255,255,255,0.05)',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: '12px',
-        padding: '8px 12px',
-        width: '220px',
-        height: '56px',
+        padding: '10px 12px',
         cursor: 'pointer',
-        border: 'none',
+        maxWidth: '260px',
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
     >
-      <div
-        className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
-        style={{ background: 'rgba(255,255,255,0.06)' }}
-      >
-        <Icon size={16} strokeWidth={1.5} style={{ color: 'rgba(255,255,255,0.56)' }} />
+      <div className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <Icon size={16} strokeWidth={1.5} style={{ color: 'rgba(255,255,255,0.50)' }} />
       </div>
       <div className="min-w-0 flex-1">
-        <p
-          className="text-[13px] font-medium truncate leading-tight"
-          style={{ color: 'rgba(255,255,255,0.84)' }}
-        >
+        <p className="text-[13px] font-medium truncate leading-tight" style={{ color: 'rgba(255,255,255,0.82)' }}>
           {file.fileName}
         </p>
-        <p
-          className="text-[11px] leading-tight mt-0.5"
-          style={{ color: 'rgba(255,255,255,0.40)' }}
-        >
-          Preview File
+        <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          Tap to preview
         </p>
       </div>
     </button>
   );
 }
 
-/* ── Task completed bar (Kimi-style sticky) ───────────────────── */
-export function TaskCompletedCard({ duration }: { duration?: string }) {
-  return (
-    <div
-      className="animate-slide-up"
-      style={{
-        position: 'sticky',
-        bottom: 0,
-        zIndex: 10,
-        padding: '0 4px',
-      }}
-    >
-      <div
-        className="flex items-center gap-2"
-        style={{
-          background: 'rgb(31, 31, 31)',
-          borderRadius: '20px 20px 0 0',
-          padding: '12px 16px',
-          height: '50px',
-          boxShadow: 'rgba(0,0,0,0.07) 0px 5px 16px -4px',
-        }}
-      >
-        <CheckCircle2
-          size={16}
-          strokeWidth={2}
-          style={{ color: 'rgb(52,199,89)' }}
-          className="flex-shrink-0"
-        />
-        <span
-          className="flex-1 text-[14px] font-medium"
-          style={{ color: 'rgba(255,255,255,0.84)' }}
-        >
-          Task completed
-        </span>
-        {duration && (
-          <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.40)' }}>
-            {duration}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Reaction bar below messages ──────────────────────────────── */
-export function ReactionBar({ content }: { content: string }) {
+/* ── Reaction bar ───────────────────────────────────────────────── */
+export function ReactionBar({ content, onRetry }: { content: string; onRetry?: () => void }) {
   const [liked, setLiked] = useState<'up' | 'down' | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -394,35 +257,98 @@ export function ReactionBar({ content }: { content: string }) {
     });
   };
 
-  const iconColor = 'rgba(255,255,255,0.32)';
-  const activeColor = 'rgba(255,255,255,0.72)';
+  const dim = 'rgba(255,255,255,0.28)';
+  const lit  = 'rgba(255,255,255,0.70)';
+  const btnBase = { background: 'transparent', border: 'none', cursor: 'pointer' };
 
   return (
-    <div className="flex items-center pt-1 animate-fade-in" style={{ gap: '6px', height: '28px', marginLeft: '48px' }}>
-      <button
-        onClick={handleCopy}
-        className="p-1.5 rounded-md transition-colors duration-150 hover:bg-white/5"
-        style={{ color: copied ? activeColor : iconColor, background: 'transparent', border: 'none', cursor: 'pointer' }}
-        title="Copy"
-      >
-        <Copy size={16} strokeWidth={1.5} />
+    <div className="flex items-center gap-0.5" style={{ paddingTop: '4px' }}>
+      <button onClick={handleCopy} className="p-1.5 rounded-lg transition-colors" style={{ ...btnBase, color: copied ? lit : dim }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} title={copied ? 'Copied!' : 'Copy'}>
+        <Copy size={14} strokeWidth={1.5} />
       </button>
-      <button
-        onClick={() => setLiked(liked === 'up' ? null : 'up')}
-        className="p-1.5 rounded-md transition-colors duration-150 hover:bg-white/5"
-        style={{ color: liked === 'up' ? activeColor : iconColor, background: 'transparent', border: 'none', cursor: 'pointer' }}
-        title="Like"
-      >
-        <ThumbsUp size={16} strokeWidth={1.5} />
+      {onRetry && (
+        <button onClick={onRetry} className="p-1.5 rounded-lg transition-colors" style={{ ...btnBase, color: dim }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} title="Regenerate">
+          <RefreshCw size={14} strokeWidth={1.5} />
+        </button>
+      )}
+      <button onClick={() => setLiked(liked === 'up' ? null : 'up')} className="p-1.5 rounded-lg transition-colors" style={{ ...btnBase, color: liked === 'up' ? lit : dim }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} title="Good">
+        <ThumbsUp size={14} strokeWidth={1.5} />
       </button>
-      <button
-        onClick={() => setLiked(liked === 'down' ? null : 'down')}
-        className="p-1.5 rounded-md transition-colors duration-150 hover:bg-white/5"
-        style={{ color: liked === 'down' ? activeColor : iconColor, background: 'transparent', border: 'none', cursor: 'pointer' }}
-        title="Dislike"
-      >
-        <ThumbsDown size={16} strokeWidth={1.5} />
+      <button onClick={() => setLiked(liked === 'down' ? null : 'down')} className="p-1.5 rounded-lg transition-colors" style={{ ...btnBase, color: liked === 'down' ? lit : dim }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} title="Bad">
+        <ThumbsDown size={14} strokeWidth={1.5} />
       </button>
+    </div>
+  );
+}
+
+/* ── Claude-style action block (per-tool, with vertical bar) ───── */
+export function ClaudeActionBlock({ action }: { action: ActionItem }) {
+  const [open, setOpen] = useState(false);
+  const { icon: Icon, label } = getToolConfig(action.toolName);
+  const isRunning = action.status === 'running';
+  const canExpand = !isRunning && !!action.expandData;
+  const displayLabel = action.summary || (isRunning ? label : label.replace(/ing\b/, 'ed'));
+
+  return (
+    <div className="flex gap-3">
+      {/* Vertical left border — pulses while running */}
+      <div
+        className={`w-[2px] self-stretch rounded-full ${
+          isRunning ? 'animate-border-pulse bg-[#A78BFA]' : 'bg-[#3C3C3E]'
+        }`}
+      />
+
+      {/* Content */}
+      <div className="flex-1 py-1">
+        {/* Collapsed row: icon + label + chevron */}
+        <button
+          onClick={() => canExpand && setOpen((o) => !o)}
+          className="flex items-center gap-2 w-full text-left"
+          style={{ cursor: canExpand ? 'pointer' : 'default' }}
+        >
+          <Icon
+            size={14}
+            style={{
+              color: isRunning ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)',
+            }}
+          />
+          <span
+            className="flex-1 text-[13px]"
+            style={{
+              color: isRunning ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.4)',
+            }}
+          >
+            {displayLabel}
+          </span>
+          {isRunning && (
+            <Loader2 size={12} className="animate-spin" style={{ color: '#A78BFA' }} />
+          )}
+          {!isRunning && canExpand && (
+            <ChevronDown
+              size={12}
+              style={{
+                color: 'rgba(255,255,255,0.25)',
+                transform: open ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s',
+              }}
+            />
+          )}
+          {!isRunning && !canExpand && (
+            <Check size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />
+          )}
+        </button>
+
+        {/* Expanded content (search results with favicons, etc.) */}
+        {open && action.expandData && <ExpandContent data={action.expandData} />}
+      </div>
     </div>
   );
 }

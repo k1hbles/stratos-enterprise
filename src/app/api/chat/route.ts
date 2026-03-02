@@ -6,6 +6,16 @@ import type { SSEEvent } from "@/lib/ai/openclaw/types";
 
 type ChatMode = "auto" | "openclaw" | "council" | "fullstack";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function POST(req: Request) {
   try {
     const userId = await getSessionUserId();
@@ -22,7 +32,6 @@ export async function POST(req: Request) {
 
     const db = getDb();
 
-    // Verify conversation belongs to user
     const conversation = db
       .prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?")
       .get(conversationId, userId) as { id: string } | undefined;
@@ -31,7 +40,7 @@ export async function POST(req: Request) {
       return new Response("Conversation not found", { status: 404 });
     }
 
-    // Enrich message with file metadata for LLM
+    // Enrich message with file metadata
     let enrichedMessage = message;
     if (fileIds?.length > 0) {
       const placeholders = fileIds.map(() => "?").join(",");
@@ -64,12 +73,10 @@ export async function POST(req: Request) {
       content: m.content,
     }));
 
-    // Replace last user message with enriched version
     if (messages.length > 0 && enrichedMessage !== message) {
       messages[messages.length - 1] = { role: "user", content: enrichedMessage };
     }
 
-    // Auto-title on first message
     if (messages.length === 1) {
       const title = message.slice(0, 60) + (message.length > 60 ? "..." : "");
       db.prepare("UPDATE conversations SET title = ? WHERE id = ?").run(title, conversationId);
@@ -77,56 +84,87 @@ export async function POST(req: Request) {
 
     const hasFiles = (fileIds?.length ?? 0) > 0;
     const encoder = new TextEncoder();
+    const assistantMsgId = crypto.randomUUID();
 
-    const readable = new ReadableStream({
-      async start(controller) {
+    // Use a TransformStream so we can pipe events as they arrive
+    // without waiting for runOpenClaw to fully resolve.
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    const send = (event: SSEEvent) => {
+      writer.write(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    };
+
+    // Run the agent loop in the background — don't await here.
+    // This is the key fix: the Response is returned immediately with the
+    // readable stream, and events are pushed as they happen.
+    (async () => {
+      let streamedContent = "";
+      let lastPersistTime = Date.now();
+      const PERSIST_INTERVAL_MS = 2000;
+
+      db.prepare(
+        "INSERT INTO messages (id, conversation_id, role, content, status) VALUES (?, ?, 'assistant', '', 'streaming')"
+      ).run(assistantMsgId, conversationId);
+
+      try {
+        const emit = (event: SSEEvent) => {
+          send(event);
+
+          if (event.type === "text") {
+            streamedContent += event.text;
+            const now = Date.now();
+            if (now - lastPersistTime >= PERSIST_INTERVAL_MS) {
+              db.prepare("UPDATE messages SET content = ? WHERE id = ?")
+                .run(streamedContent, assistantMsgId);
+              lastPersistTime = now;
+            }
+          }
+        };
+
+        // Emit tool_call events immediately as they start so the UI
+        // shows a live spinner rather than waiting for completion.
+        const result = await runOpenClaw(
+          userId,
+          conversationId,
+          messages,
+          mode,
+          hasFiles,
+          emit
+        );
+
+        db.prepare(
+          "UPDATE messages SET content = ?, status = 'complete' WHERE id = ?"
+        ).run(result.fullResponse, assistantMsgId);
+
+        db.prepare(
+          "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?"
+        ).run(conversationId);
+
+        send({ type: "done", file: result.files[0] });
+        writer.write(encoder.encode("data: [DONE]\n\n"));
+      } catch (err) {
+        console.error("Stream error:", err);
         try {
-          const emit = (event: SSEEvent) => {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
-            );
-          };
-
-          const result = await runOpenClaw(
-            userId,
-            conversationId,
-            messages,
-            mode,
-            hasFiles,
-            emit
-          );
-
-          // Save assistant message
-          const assistantMsgId = crypto.randomUUID();
-          db.prepare(
-            "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', ?)"
-          ).run(assistantMsgId, conversationId, result.fullResponse);
-
-          // Update conversation timestamp
-          db.prepare(
-            "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?"
-          ).run(conversationId);
-
-          // Emit done (with first file if any for backward compat)
-          emit({ type: "done", file: result.files[0] });
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch (err) {
-          console.error("Stream error:", err);
-          const errorMessage = err instanceof Error ? err.message : "Stream error";
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "error", message: errorMessage })}\n\n`)
-          );
-          controller.close();
-        }
-      },
-    });
+          db.prepare("UPDATE messages SET content = ?, status = 'interrupted' WHERE id = ?")
+            .run(streamedContent, assistantMsgId);
+        } catch {}
+        const errorMessage = err instanceof Error ? err.message : "Stream error";
+        send({ type: "error", message: errorMessage });
+        send({ type: "done" });
+        writer.write(encoder.encode("data: [DONE]\n\n"));
+      } finally {
+        writer.close();
+      }
+    })();
 
     return new Response(readable, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no", // Disable nginx/proxy buffering — critical for SSE
+        ...CORS_HEADERS,
       },
     });
   } catch (err) {

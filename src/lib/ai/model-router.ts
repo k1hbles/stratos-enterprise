@@ -3,7 +3,7 @@
 // Nuclear models (Sonnet/Opus) go direct to Anthropic.
 
 export const MODELS = {
-  DEFAULT: 'minimax/minimax-m2.5',
+  DEFAULT: 'x-ai/grok-4.1-fast',
   THINKING: 'moonshotai/kimi-k2-thinking',
   AGENTIC: 'moonshotai/kimi-k2.5',
   BOARD: 'z-ai/glm-5',

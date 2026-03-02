@@ -20,6 +20,7 @@ const SKIP_MOBILE_REDIRECT = [
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true;
+  if (/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js|woff2?|ttf|map|json)$/i.test(pathname)) return true;
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/logo");
 }

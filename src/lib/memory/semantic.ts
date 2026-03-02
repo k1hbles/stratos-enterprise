@@ -1,5 +1,4 @@
 import { getDb } from "@/lib/db";
-import { GoogleGenAI } from '@google/genai';
 
 export interface SemanticMemory {
   id: string;
@@ -12,23 +11,53 @@ export interface SemanticMemory {
   similarity?: number;
 }
 
+// Circuit breaker — skip embedding after repeated failures to avoid blocking responses
+let _embeddingFailures = 0;
+let _embeddingLastFailure = 0;
+const EMBEDDING_BACKOFF_MS = 60_000; // 1 minute cooldown after 3 failures
+const EMBEDDING_TIMEOUT_MS = 2_000;
+
 /** Generate an embedding using Gemini text-embedding-004 (free tier) */
 async function getEmbedding(text: string): Promise<number[] | null> {
   const apiKey = process.env.GEMINI_API_KEY ??
                  process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!apiKey) {
-    console.warn('[Embedding] No Gemini API key, memory disabled');
+  if (!apiKey) return null;
+
+  // Circuit breaker: skip if too many recent failures
+  if (_embeddingFailures >= 3 && Date.now() - _embeddingLastFailure < EMBEDDING_BACKOFF_MS) {
     return null;
   }
+
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.embedContent({
-      model: 'text-embedding-004',
-      contents: text.slice(0, 8000),
-    });
-    return response.embeddings?.[0]?.values ?? null;
+    // 2s timeout so a failing embedding never blocks the response pipeline
+    const response = await Promise.race([
+      fetch(
+        `https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'models/text-embedding-004',
+            content: { parts: [{ text: text.slice(0, 8000) }] },
+          }),
+        }
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), EMBEDDING_TIMEOUT_MS)
+      ),
+    ]) as Response;
+
+    if (!response.ok) {
+      throw new Error(`Embedding API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    _embeddingFailures = 0; // reset on success
+    return data.embedding?.values ?? null;
   } catch (err) {
-    console.warn('[Embedding] Gemini embedding failed:', err);
+    _embeddingFailures++;
+    _embeddingLastFailure = Date.now();
+    console.warn('[Embedding] Gemini embedding failed:', (err as Error).message ?? err);
     return null;
   }
 }

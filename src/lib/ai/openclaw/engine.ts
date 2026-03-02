@@ -29,7 +29,8 @@ export async function runOpenClaw(
     ctx.systemPrompt,
     messages,
     ctx.tools,
-    emit
+    emit,
+    conversationId
   );
 
   // Phase 3-4: Fire-and-forget memory extraction (ALWAYS, not just 4+ messages)

@@ -116,7 +116,7 @@ async function callOpenRouter(opts: LLMCallOptions): Promise<LLMResponse> {
       }))
     : undefined;
 
-  const maxTokens = opts.maxTokens ?? 4096;
+  const maxTokens = opts.maxTokens ?? 8192;
 
   if (opts.onToken) {
     // Streaming path
@@ -297,7 +297,7 @@ async function callAnthropic(opts: LLMCallOptions): Promise<LLMResponse> {
     input_schema: t.input_schema,
   }));
 
-  const maxTokens = opts.maxTokens ?? 4096;
+  const maxTokens = opts.maxTokens ?? 8192;
 
   const params: Record<string, unknown> = {
     model: opts.model,

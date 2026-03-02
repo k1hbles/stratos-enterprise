@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  // Only serve files from outputs/chat/
-  if (!normalized.startsWith("outputs/chat/")) {
+  // Only serve files from known output directories
+  if (!normalized.startsWith("outputs/chat/") && !normalized.startsWith("outputs/images/")) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
