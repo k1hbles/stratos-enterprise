@@ -30,6 +30,7 @@ import {
   ListTodo,
   Atom,
   Square,
+  Mic,
 } from 'lucide-react';
 import { MobileSidebar, MobileSettingsOverlay, MobileGalleryOverlay } from '@/components/mobile/sidebar';
 import { StreamingMessage, toolNameToIcon, toolCallLabel, sanitizeAttr, sanitizeContent, isPipelineTool, parsePhaseMarker } from '@/components/chat/StreamingMessage';
@@ -414,6 +415,76 @@ function MobileConversationInner({ id }: { id: string }) {
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
+
+  /* ── Voice input ──────────────────────────────────────────── */
+  type AnyRecognition = { continuous: boolean; interimResults: boolean; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null; start: () => void; stop: () => void; };
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef<AnyRecognition | null>(null);
+  const finalTranscriptRef = useRef('');
+
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>;
+    setVoiceSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
+  }, []);
+
+  // Stop recording if agent starts streaming
+  useEffect(() => {
+    if (isStreaming && isRecording) recognitionRef.current?.stop();
+  }, [isStreaming, isRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+
+  const handleVoiceTap = useCallback(() => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const w = window as unknown as Record<string, new () => AnyRecognition>;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) return;
+
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    const baseText = input;
+    finalTranscriptRef.current = '';
+
+    recognition.onresult = (e: any) => {
+      let newFinals = '';
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) newFinals += t;
+        else interim += t;
+      }
+      finalTranscriptRef.current += newFinals;
+      const next = baseText + (baseText && finalTranscriptRef.current ? ' ' : '') + finalTranscriptRef.current + interim;
+      setInput(next);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+      }
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'no-speech') console.error('[voice] error:', e.error);
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+  }, [isRecording, input]);
+  /* ─────────────────────────────────────────────────────────── */
 
   const handleFileClick = (accept?: string) => {
     if (fileInputRef.current) {
@@ -1005,25 +1076,48 @@ function MobileConversationInner({ id }: { id: string }) {
                   handleSend();
                 }
               }}
-              placeholder="Ask ELK anything"
+              placeholder={isRecording ? 'Listening...' : 'Ask ELK anything'}
               className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed overflow-y-auto"
               style={{ maxHeight: 120 }}
             />
             {isStreaming ? (
+              /* Stop button while agent is generating */
               <button
                 className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
                 onClick={handleStop}
               >
                 <Square size={14} fill="currentColor" strokeWidth={0} />
               </button>
+            ) : isRecording ? (
+              /* Pulsing red dot — tap to stop recording */
+              <button
+                onClick={handleVoiceTap}
+                className="relative flex items-center justify-center flex-shrink-0"
+                style={{ width: 32, height: 32, minWidth: 32 }}
+                title="Tap to stop"
+              >
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-60" />
+                <span className="relative inline-flex rounded-full bg-red-500" style={{ width: 14, height: 14 }} />
+              </button>
             ) : (input.trim() || attachments.length > 0) ? (
+              /* Send button when there's content */
               <button
                 className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
                 onClick={() => handleSend()}
               >
                 <ArrowUp size={18} strokeWidth={2.5} />
               </button>
+            ) : voiceSupported ? (
+              /* Mic button when idle and input is empty */
+              <button
+                onClick={handleVoiceTap}
+                className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)] active:text-[var(--text-primary)] transition-colors"
+                title="Voice input"
+              >
+                <Mic size={20} />
+              </button>
             ) : (
+              /* Fallback for browsers without Web Speech API */
               <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
                 <SpeakIcon />
               </button>
