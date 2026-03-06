@@ -247,7 +247,7 @@ function TextContent({ text }: { text: string }) {
   const flushTable = () => {
     if (!tableHeaders && !tableRows.length) return;
     elements.push(
-      <div key={key++} className="overflow-x-auto my-1 rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div key={key++} className="overflow-x-auto my-1 rounded-xl" style={{ border: '1px solid var(--border-default)' }}>
         <table className="w-full text-[14px] border-collapse">
           {tableHeaders && (
             <thead>
@@ -255,8 +255,8 @@ function TextContent({ text }: { text: string }) {
                 {tableHeaders.map((h, i) => (
                   <th
                     key={i}
-                    className="text-left px-4 py-2.5 text-gray-200 font-medium"
-                    style={{ background: '#1a1a1a', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+                    className="text-left px-4 py-2 font-medium"
+                    style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
                   >
                     {renderInline(h)}
                   </th>
@@ -266,9 +266,9 @@ function TextContent({ text }: { text: string }) {
           )}
           <tbody>
             {tableRows.map((row, ri) => (
-              <tr key={ri} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <tr key={ri} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 {row.map((cell, ci) => (
-                  <td key={ci} className="px-4 py-2.5 text-gray-300">
+                  <td key={ci} className="px-4 py-2" style={{ color: 'var(--text-secondary)' }}>
                     {renderInline(cell)}
                   </td>
                 ))}
@@ -763,11 +763,41 @@ function StreamBlock({
   const displayCount = resultCount ?? (name === 'search' ? parseResultCount(content) : null);
   const { rawContent } = parseItemsFromContent(content);
 
+  // Auto-expand when streaming starts
   useEffect(() => {
-    if (type !== 'think' || isStreaming) return;
-    const t = setTimeout(() => setOpen(false), 800);
+    if (isStreaming) setOpen(true);
+  }, [isStreaming]);
+
+  // Auto-collapse after streaming ends (except "generate" blocks — user is waiting on those)
+  useEffect(() => {
+    if (isStreaming) return;
+    if (type === 'tool' && name === 'generate') return;
+    const t = setTimeout(() => setOpen(false), 600);
     return () => clearTimeout(t);
-  }, [type, isStreaming]);
+  }, [type, name, isStreaming]);
+
+  // Empty completed blocks → compact inline status (no block wrapper)
+  if (!isStreaming && items.length === 0 && !rawContent) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 0',
+        fontSize: 13,
+        color: 'var(--action-text)',
+        animation: 'fadeSlideIn 0.2s ease forwards',
+      }}>
+        <BlockIcon name={name} type={type} isStreaming={false} />
+        <span style={{ color: 'var(--action-label)', fontWeight: 500 }}>{actionLabel}</span>
+        <span style={{ color: 'var(--action-separator)' }}>|</span>
+        <span style={{ color: 'var(--action-text)' }}>{label || name}</span>
+        <span style={{
+          fontSize: 11, color: 'var(--action-dot)', fontWeight: 500, marginLeft: 'auto',
+        }}>done</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -787,7 +817,7 @@ function StreamBlock({
           padding: '10px 12px',
           background: 'var(--action-bg)',
           border: '1px solid var(--action-border)',
-          borderRadius: items.length > 0 ? '14px 14px 0 0' : 14,
+          borderRadius: items.length > 0 && (open || isStreaming) ? '14px 14px 0 0' : 14,
           cursor: 'pointer',
           textAlign: 'left',
         }}
@@ -830,8 +860,8 @@ function StreamBlock({
         />
       </button>
 
-      {/* Sub-bullet items — always visible (no dropdown needed) */}
-      {items.length > 0 && (
+      {/* Sub-bullet items — visible when streaming or manually expanded */}
+      {items.length > 0 && (open || isStreaming) && (
         <div style={{
           position: 'relative',
           borderLeft: '1px solid var(--action-border)',
@@ -1033,4 +1063,4 @@ export function StreamingMessage({
 }
 
 // ─── Re-export shared helpers (used by SSE consumers to build raw XML) ───────
-export { sanitizeAttr, sanitizeContent, toolNameToIcon, toolCallLabel } from '@/lib/ai/openclaw/stream-helpers';
+export { sanitizeAttr, sanitizeContent, toolNameToIcon, toolCallLabel, isPipelineTool, parsePhaseMarker, parseTextMarker } from '@/lib/ai/openclaw/stream-helpers';
