@@ -1053,74 +1053,107 @@ function MobileConversationInner({ id }: { id: string }) {
 
           {/* Input row */}
           <div className="flex items-center gap-3 px-2 py-1.5">
-            <button
-              className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]"
-              onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
-            >
-              <PlusCircle size={22} />
-            </button>
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                // Auto-resize
-                const el = e.target;
-                el.style.height = 'auto';
-                el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder={isRecording ? 'Listening...' : 'Ask ELK anything'}
-              className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed overflow-y-auto"
-              style={{ maxHeight: 120 }}
-            />
+
+            {/* Left button: stop (recording) or + (normal) */}
+            {isRecording ? (
+              <button
+                onClick={handleVoiceTap}
+                className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-elevated)] text-[var(--text-primary)] active:opacity-70 transition-opacity"
+              >
+                <Square size={13} fill="currentColor" strokeWidth={0} />
+              </button>
+            ) : (
+              <button
+                className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]"
+                onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+              >
+                <PlusCircle size={22} />
+              </button>
+            )}
+
+            {/* Middle: transcribing UI (recording) or textarea (normal) */}
+            {isRecording ? (
+              <div className="flex-1 flex items-center gap-2 overflow-hidden">
+                {input.trim() ? (
+                  /* Transcribed text so far */
+                  <span className="text-[15px] text-[var(--text-primary)] truncate">{input}</span>
+                ) : (
+                  /* Waveform bars + "Transcribing" label */
+                  <>
+                    <div className="flex items-center gap-[3px]" style={{ height: 20 }}>
+                      {[0.35, 0.65, 1, 0.55, 0.85, 0.45, 0.75, 0.35, 0.65, 1, 0.55, 0.85].map((h, i) => (
+                        <div
+                          key={i}
+                          className="rounded-full bg-[var(--text-placeholder)]"
+                          style={{
+                            width: 2,
+                            height: `${h * 18}px`,
+                            animation: 'voiceBar 1.1s ease-in-out infinite',
+                            animationDelay: `${i * 0.09}s`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[15px] text-[var(--text-placeholder)]">Transcribing...</span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Ask ELK anything"
+                className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed overflow-y-auto"
+                style={{ maxHeight: 120 }}
+              />
+            )}
+
+            {/* Right buttons */}
             {isStreaming ? (
-              /* Stop button while agent is generating */
+              /* Agent generating — stop button only */
               <button
                 className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
                 onClick={handleStop}
               >
                 <Square size={14} fill="currentColor" strokeWidth={0} />
               </button>
-            ) : isRecording ? (
-              /* Pulsing red dot — tap to stop recording */
-              <button
-                onClick={handleVoiceTap}
-                className="relative flex items-center justify-center flex-shrink-0"
-                style={{ width: 32, height: 32, minWidth: 32 }}
-                title="Tap to stop"
-              >
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-60" />
-                <span className="relative inline-flex rounded-full bg-red-500" style={{ width: 14, height: 14 }} />
-              </button>
-            ) : (input.trim() || attachments.length > 0) ? (
-              /* Send button when there's content */
-              <button
-                className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
-                onClick={() => handleSend()}
-              >
-                <ArrowUp size={18} strokeWidth={2.5} />
-              </button>
-            ) : voiceSupported ? (
-              /* Mic button when idle and input is empty */
-              <button
-                onClick={handleVoiceTap}
-                className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)] active:text-[var(--text-primary)] transition-colors"
-                title="Voice input"
-              >
-                <Mic size={20} />
-              </button>
             ) : (
-              /* Fallback for browsers without Web Speech API */
-              <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
-                <SpeakIcon />
-              </button>
+              <>
+                {/* Mic — visible when voice supported and not recording */}
+                {voiceSupported && !isRecording && (
+                  <button
+                    onClick={handleVoiceTap}
+                    className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)] active:text-[var(--text-primary)] transition-colors flex-shrink-0"
+                  >
+                    <Mic size={20} />
+                  </button>
+                )}
+                {/* Send — always present; enabled when input or attachments */}
+                <button
+                  onClick={() => { if (isRecording) { recognitionRef.current?.stop(); } handleSend(); }}
+                  disabled={!isRecording && !input.trim() && attachments.length === 0}
+                  className="p-1.5 rounded-full transition-colors flex-shrink-0"
+                  style={{
+                    background: (isRecording || input.trim() || attachments.length > 0) ? 'var(--send-btn-bg)' : 'var(--surface-glass)',
+                    color: (isRecording || input.trim() || attachments.length > 0) ? 'var(--send-btn-icon)' : 'var(--text-tertiary)',
+                  }}
+                >
+                  <ArrowUp size={18} strokeWidth={2.5} />
+                </button>
+              </>
             )}
           </div>
         </div>

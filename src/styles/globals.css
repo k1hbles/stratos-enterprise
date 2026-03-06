@@ -135,6 +135,16 @@
   --thinking-pill-text: #1685F1;
   --thinking-pill-border: #B8D4FF;
 
+  /* Action blocks */
+  --action-bg: rgba(0, 0, 0, 0.03);
+  --action-border: rgba(0, 0, 0, 0.08);
+  --action-label: rgba(0, 0, 0, 0.70);
+  --action-text: rgba(0, 0, 0, 0.50);
+  --action-separator: rgba(0, 0, 0, 0.15);
+  --action-dot: rgba(0, 0, 0, 0.20);
+  --action-icon: rgba(0, 0, 0, 0.40);
+  --action-hover: rgba(0, 0, 0, 0.05);
+
   /* Dropdown */
   --dropdown-bg: rgba(250, 250, 248, 0.98);
   --dropdown-border: rgba(0, 0, 0, 0.10);
@@ -433,6 +443,16 @@
   --chatbox-glow: none;
   --chatbox-text: rgba(255, 255, 255, 0.92);
   --chip-border: rgba(255, 255, 255, 0.15);
+
+  /* ── Action blocks ── */
+  --action-bg: rgba(255, 255, 255, 0.03);
+  --action-border: rgba(255, 255, 255, 0.06);
+  --action-label: #e0e0e0;
+  --action-text: #888888;
+  --action-separator: rgba(255, 255, 255, 0.15);
+  --action-dot: rgba(255, 255, 255, 0.15);
+  --action-icon: rgba(255, 255, 255, 0.40);
+  --action-hover: rgba(255, 255, 255, 0.05);
 
   /* ── Dropdowns — elevated panels ── */
   --dropdown-bg: #18181a;
@@ -1124,4 +1144,9 @@ input:focus-visible {
 }
 .animate-border-pulse {
   animation: border-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes voiceBar {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
 }
