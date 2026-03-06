@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   ChevronRight,
+  ChevronLeft,
   Search,
   FileSpreadsheet,
   Presentation,
@@ -626,14 +627,14 @@ function formatGalleryDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function GalleryImageCard({ image, onClick }: { image: GalleryImageItem; onClick: () => void }) {
+function GalleryImageCard({ image, onClick, selectMode, selected, onToggleSelect }: { image: GalleryImageItem; onClick: () => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: () => void }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   return (
     <button
       className="relative overflow-hidden rounded-xl bg-[var(--bg-elevated)] active:scale-95 transition-transform duration-150"
       style={{ aspectRatio: '1/1' }}
-      onClick={onClick}
+      onClick={selectMode ? onToggleSelect : onClick}
     >
       {!loaded && !error && <div className="absolute inset-0 animate-pulse bg-[var(--sidebar-item-active)]" />}
       {error ? (
@@ -650,63 +651,222 @@ function GalleryImageCard({ image, onClick }: { image: GalleryImageItem; onClick
           onError={() => setError(true)}
         />
       ) : null}
+      {selectMode && (
+        <div className="absolute top-1.5 right-1.5">
+          {selected ? (
+            <CheckCircle2 size={22} className="text-blue-500 drop-shadow-md" fill="white" />
+          ) : (
+            <Circle size={22} className="text-white/60 drop-shadow-md" />
+          )}
+        </div>
+      )}
+      {selectMode && selected && (
+        <div className="absolute inset-0 bg-blue-500/20 rounded-xl" />
+      )}
     </button>
   );
 }
 
 function GalleryLightbox({
-  image,
-  total,
+  images,
   index,
   onClose,
-  onPrev,
-  onNext,
+  onChangeIndex,
 }: {
-  image: GalleryImageItem;
-  total: number;
+  images: GalleryImageItem[];
   index: number;
   onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
+  onChangeIndex: (i: number) => void;
 }) {
+  const total = images.length;
+  const prevImg = index > 0 ? images[index - 1] : null;
+  const currImg = images[index];
+  const nextImg = index < total - 1 ? images[index + 1] : null;
+
+  // Refs for direct DOM manipulation during drag (no re-render per frame)
+  const prevSlotRef = useRef<HTMLDivElement>(null);
+  const currSlotRef = useRef<HTMLDivElement>(null);
+  const nextSlotRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number | null>(null);
+  const animatingRef = useRef(false);
+
+  const EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const DURATION = 260;
+
+  const setPositions = useCallback((dx: number, transition = false) => {
+    const tr = transition ? `transform ${DURATION}ms ${EASING}` : 'none';
+    if (prevSlotRef.current) {
+      prevSlotRef.current.style.transition = tr;
+      prevSlotRef.current.style.transform = `translateX(calc(-100% + ${dx}px))`;
+    }
+    if (currSlotRef.current) {
+      currSlotRef.current.style.transition = tr;
+      currSlotRef.current.style.transform = `translateX(${dx}px)`;
+    }
+    if (nextSlotRef.current) {
+      nextSlotRef.current.style.transition = tr;
+      nextSlotRef.current.style.transform = `translateX(calc(100% + ${dx}px))`;
+    }
+  }, []);
+
+  // Reset to center whenever index changes (new images mounted)
+  useEffect(() => {
+    setPositions(0);
+  }, [index, setPositions]);
+
+  const navigate = useCallback((dir: 'prev' | 'next') => {
+    if (animatingRef.current) return;
+    if (dir === 'prev' && !prevImg) return;
+    if (dir === 'next' && !nextImg) return;
+    animatingRef.current = true;
+    const target = dir === 'prev' ? window.innerWidth : -window.innerWidth;
+    setPositions(target, true);
+    setTimeout(() => {
+      onChangeIndex(dir === 'prev' ? index - 1 : index + 1);
+      animatingRef.current = false;
+    }, DURATION);
+  }, [prevImg, nextImg, index, onChangeIndex, setPositions]);
+
+  const snapBack = useCallback(() => {
+    setPositions(0, true);
+    setTimeout(() => { animatingRef.current = false; }, DURATION);
+  }, [setPositions]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (animatingRef.current) return;
     touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || animatingRef.current) return;
+    let dx = e.touches[0].clientX - touchStartX.current;
+    // Rubber-band resistance at edges
+    if ((dx > 0 && !prevImg) || (dx < 0 && !nextImg)) dx *= 0.15;
+    setPositions(dx);
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     touchStartX.current = null;
-    if (dx > 60 && index > 0) onPrev();
-    else if (dx < -60 && index < total - 1) onNext();
+    if (dx > 60 && prevImg) navigate('prev');
+    else if (dx < -60 && nextImg) navigate('next');
+    else snapBack();
   };
+
+  // Dot indicators — show up to 7, sliding window when more
+  const MAX_DOTS = 7;
+  const dotWindowStart = total <= MAX_DOTS ? 0 : Math.max(0, Math.min(index - Math.floor(MAX_DOTS / 2), total - MAX_DOTS));
+  const dotCount = Math.min(total, MAX_DOTS);
 
   return (
     <div
       className="absolute inset-0 z-[60] flex flex-col bg-[var(--bg-page)]"
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="flex items-center justify-between px-4 py-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-        <button onClick={onClose} className="p-2 -ml-2"><X size={22} className="text-[var(--text-secondary)]" /></button>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+        <button onClick={onClose} className="p-2 -ml-2">
+          <X size={22} className="text-[var(--text-secondary)]" />
+        </button>
         <span className="text-[13px] text-[var(--text-subtle)]">{index + 1} / {total}</span>
-        {image.url && (
-          <a href={image.url} download={image.fileName ?? 'image.png'} className="p-2 -mr-2">
+        {currImg?.url ? (
+          <a href={currImg.url} download={currImg.fileName ?? 'image.png'} className="p-2 -mr-2">
             <Download size={20} className="text-[var(--text-secondary)]" />
           </a>
+        ) : <div className="w-10" />}
+      </div>
+
+      {/* Image area — 3 absolutely-positioned slots */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Prev slot */}
+        <div
+          ref={prevSlotRef}
+          className="absolute inset-0 flex items-center justify-center px-4"
+          style={{ transform: 'translateX(-100%)' }}
+        >
+          {prevImg?.url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={prevImg.url} alt={prevImg.prompt ?? ''} className="max-w-full max-h-full rounded-2xl object-contain" />
+          )}
+        </div>
+        {/* Current slot */}
+        <div
+          ref={currSlotRef}
+          className="absolute inset-0 flex items-center justify-center px-4"
+          style={{ transform: 'translateX(0px)' }}
+        >
+          {currImg?.url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={currImg.url} alt={currImg.prompt ?? ''} className="max-w-full max-h-full rounded-2xl object-contain" />
+          )}
+        </div>
+        {/* Next slot */}
+        <div
+          ref={nextSlotRef}
+          className="absolute inset-0 flex items-center justify-center px-4"
+          style={{ transform: 'translateX(100%)' }}
+        >
+          {nextImg?.url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={nextImg.url} alt={nextImg.prompt ?? ''} className="max-w-full max-h-full rounded-2xl object-contain" />
+          )}
+        </div>
+
+        {/* Prev arrow */}
+        {prevImg && (
+          <button
+            onClick={() => navigate('prev')}
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full transition-opacity active:opacity-60"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >
+            <ChevronLeft size={20} className="text-[var(--text-primary)]" />
+          </button>
+        )}
+        {/* Next arrow */}
+        {nextImg && (
+          <button
+            onClick={() => navigate('next')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full transition-opacity active:opacity-60"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
+          >
+            <ChevronRight size={20} className="text-[var(--text-primary)]" />
+          </button>
         )}
       </div>
-      <div className="flex-1 flex items-center justify-center px-4">
-        {image.url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image.url} alt={image.prompt ?? 'Generated image'} className="max-w-full max-h-full rounded-xl object-contain" />
+
+      {/* Dots + caption */}
+      <div className="px-4 flex-shrink-0" style={{ paddingTop: 12, paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+        {/* Dot indicators */}
+        {total > 1 && (
+          <div className="flex justify-center items-center gap-[5px] mb-3">
+            {Array.from({ length: dotCount }, (_, i) => {
+              const dotIdx = dotWindowStart + i;
+              const isActive = dotIdx === index;
+              return (
+                <button
+                  key={dotIdx}
+                  onClick={() => !animatingRef.current && onChangeIndex(dotIdx)}
+                  className="transition-all duration-200"
+                  style={{
+                    width: isActive ? 18 : 6,
+                    height: 6,
+                    borderRadius: 3,
+                    background: isActive ? 'var(--text-primary)' : 'var(--text-subtle)',
+                    opacity: isActive ? 1 : 0.35,
+                    flexShrink: 0,
+                  }}
+                />
+              );
+            })}
+          </div>
         )}
-      </div>
-      <div className="px-4 pt-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-        {image.prompt && <p className="text-[14px] text-[var(--text-primary)] leading-relaxed mb-1 line-clamp-3">{image.prompt}</p>}
-        <p className="text-[12px] text-[var(--text-placeholder)]">{formatGalleryDate(image.createdAt)}</p>
+        {currImg?.prompt && (
+          <p className="text-[14px] text-[var(--text-primary)] leading-relaxed mb-1 line-clamp-3">{currImg.prompt}</p>
+        )}
+        <p className="text-[12px] text-[var(--text-placeholder)]">{formatGalleryDate(currImg?.createdAt ?? '')}</p>
       </div>
     </div>
   );
@@ -718,7 +878,50 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const LIMIT = 24;
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === images.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(images.map((img) => img.id)));
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/images', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (res.ok) {
+        setImages((prev) => prev.filter((img) => !selectedIds.has(img.id)));
+        setTotal((prev) => prev - selectedIds.size);
+        exitSelectMode();
+      }
+    } catch (err) {
+      console.error('Failed to delete images:', err);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fetchImages = useCallback(async (offset = 0, append = false) => {
     if (append) setLoadingMore(true);
@@ -745,14 +948,28 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
         className="flex items-center gap-3 px-4 py-3 flex-shrink-0 border-b border-[var(--border-default)]"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
       >
-        <button onClick={onOpenSidebar} className="p-1 -ml-1 text-[var(--text-secondary)]">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="10" x2="21" y2="10" />
-            <line x1="3" y1="15" x2="14" y2="15" />
-          </svg>
-        </button>
-        <span className="text-[18px] font-semibold flex-1">Gallery</span>
-        {!loading && <span className="text-[13px] text-[var(--text-placeholder)]">{total} image{total !== 1 ? 's' : ''}</span>}
+        {selectMode ? (
+          <>
+            <button onClick={exitSelectMode} className="text-[15px] text-[var(--text-secondary)]">Cancel</button>
+            <span className="text-[18px] font-semibold flex-1 text-center">{selectedIds.size} selected</span>
+            <button onClick={selectAll} className="text-[15px] text-blue-500">
+              {selectedIds.size === images.length ? 'Deselect All' : 'Select All'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={onOpenSidebar} className="p-1 -ml-1 text-[var(--text-secondary)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="10" x2="21" y2="10" />
+                <line x1="3" y1="15" x2="14" y2="15" />
+              </svg>
+            </button>
+            <span className="text-[18px] font-semibold flex-1">Gallery</span>
+            {!loading && images.length > 0 && (
+              <button onClick={() => setSelectMode(true)} className="text-[15px] text-blue-500">Select</button>
+            )}
+          </>
+        )}
       </div>
 
       {/* Content */}
@@ -777,7 +994,14 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
           <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}>
             <div className="grid grid-cols-3 gap-1 p-1 pt-2">
               {images.map((image, idx) => (
-                <GalleryImageCard key={image.id} image={image} onClick={() => setLightboxIndex(idx)} />
+                <GalleryImageCard
+                  key={image.id}
+                  image={image}
+                  onClick={() => setLightboxIndex(idx)}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(image.id)}
+                  onToggleSelect={() => toggleSelect(image.id)}
+                />
               ))}
             </div>
             {images.length < total && (
@@ -795,15 +1019,30 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
         )}
       </div>
 
+      {/* Delete footer */}
+      {selectMode && selectedIds.size > 0 && (
+        <div
+          className="flex-shrink-0 border-t border-[var(--border-default)] px-4 py-3 flex items-center justify-center"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+        >
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-500 text-white text-[15px] font-medium active:bg-red-600 transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={18} />
+            {deleting ? 'Deleting...' : `Delete ${selectedIds.size} image${selectedIds.size !== 1 ? 's' : ''}`}
+          </button>
+        </div>
+      )}
+
       {/* Lightbox */}
       {lightboxIndex !== null && (
         <GalleryLightbox
-          image={images[lightboxIndex]}
-          total={images.length}
+          images={images}
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
-          onPrev={() => setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
-          onNext={() => setLightboxIndex((i) => (i !== null && i < images.length - 1 ? i + 1 : i))}
+          onChangeIndex={(i) => setLightboxIndex(i)}
         />
       )}
     </div>
