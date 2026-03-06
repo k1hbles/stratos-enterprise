@@ -29,9 +29,10 @@ import {
   Target,
   ListTodo,
   Atom,
+  Square,
 } from 'lucide-react';
 import { MobileSidebar, MobileSettingsOverlay, MobileGalleryOverlay } from '@/components/mobile/sidebar';
-import { StreamingMessage, toolNameToIcon, toolCallLabel, sanitizeAttr, sanitizeContent } from '@/components/chat/StreamingMessage';
+import { StreamingMessage, toolNameToIcon, toolCallLabel, sanitizeAttr, sanitizeContent, isPipelineTool, parsePhaseMarker } from '@/components/chat/StreamingMessage';
 
 const SpeakIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -48,6 +49,7 @@ interface TaskFile {
   fileName: string;
   downloadUrl: string;
   fileSize: number;
+  previewUrl?: string;
 }
 
 interface Attachment {
@@ -110,6 +112,7 @@ function FilePreviewOverlay({ file, onClose }: { file: TaskFile; onClose: () => 
   const ext = file.fileName.split('.').pop()?.toLowerCase() ?? '';
   const isPdf = ext === 'pdf';
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+  const hasPreview = !!file.previewUrl;
   const Icon = getFileIcon(file.fileName);
 
   return (
@@ -133,11 +136,12 @@ function FilePreviewOverlay({ file, onClose }: { file: TaskFile; onClose: () => 
 
       {/* Preview body */}
       <div className="flex-1 overflow-hidden">
-        {isPdf ? (
+        {isPdf || hasPreview ? (
           <iframe
-            src={file.downloadUrl}
+            src={hasPreview ? file.previewUrl! : file.downloadUrl}
             className="w-full h-full border-0"
             title={file.fileName}
+            sandbox={hasPreview ? "allow-same-origin" : undefined}
           />
         ) : isImage ? (
           <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
@@ -359,7 +363,7 @@ function MobileConversationInner({ id }: { id: string }) {
                 role: m.role as 'user' | 'assistant',
                 content: m.content,
                 raw: meta?.raw ?? m.content ?? '',
-                file: meta?.file ? { fileName: meta.file.name, downloadUrl: meta.file.url, fileSize: meta.file.size ?? 0 } : undefined,
+                file: meta?.file ? { fileName: meta.file.name, downloadUrl: meta.file.url, fileSize: meta.file.size ?? 0, ...(meta.file.previewUrl ? { previewUrl: meta.file.previewUrl } : {}) } : undefined,
                 attachments: meta?.attachments?.map((a: { mediaType: string; name: string; data: string }) => ({
                   data: a.data,
                   mediaType: a.mediaType,
@@ -406,6 +410,10 @@ function MobileConversationInner({ id }: { id: string }) {
     setIsStreaming(false);
     router.push('/m/chat');
   };
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleFileClick = (accept?: string) => {
     if (fileInputRef.current) {
@@ -484,6 +492,8 @@ function MobileConversationInner({ id }: { id: string }) {
     let rawAccum = '';
     let imageTagBuffer = '';
     let isImageTool = false;
+    let pipelineMode = false;
+    let pipelinePhaseOpen = false;
     const pushRaw = (r: string) =>
       setMessages((prev) => prev.map((m) => m.id !== assistantId ? m : { ...m, raw: r }));
 
@@ -491,7 +501,10 @@ function MobileConversationInner({ id }: { id: string }) {
     abortRef.current = controller;
 
     try {
-      const res = await fetch('/api/chat', {
+      const chatEndpoint = process.env.NEXT_PUBLIC_USE_OPENCLAW === 'true'
+        ? '/api/chat/elk-bridge'
+        : '/api/chat';
+      const res = await fetch(chatEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -530,15 +543,25 @@ function MobileConversationInner({ id }: { id: string }) {
           if (parsed.type === 'error') throw new Error(parsed.message || 'Stream error');
 
           if (parsed.type === 'text' && parsed.text) {
+            // Close open pipeline phase before text narration
+            if (pipelineMode && pipelinePhaseOpen) {
+              rawAccum += '</tool>';
+              pipelinePhaseOpen = false;
+            }
             rawAccum += parsed.text;
             pushRaw(rawAccum);
             scrollToBottom();
           } else if (parsed.type === 'tool_call' && parsed.toolName) {
             isImageTool = parsed.toolName === 'generate_image';
             imageTagBuffer = '';
-            const iconName = toolNameToIcon(parsed.toolName);
-            const label = toolCallLabel(parsed.toolName, parsed.args ?? {});
-            rawAccum += `<tool name="${iconName}" label="${sanitizeAttr(label)}">`;
+            if (isPipelineTool(parsed.toolName)) {
+              pipelineMode = true;
+              pipelinePhaseOpen = false;
+            } else {
+              const iconName = toolNameToIcon(parsed.toolName);
+              const label = toolCallLabel(parsed.toolName, parsed.args ?? {});
+              rawAccum += `<tool name="${iconName}" label="${sanitizeAttr(label)}">`;
+            }
             pushRaw(rawAccum);
             scrollToBottom();
           } else if (parsed.type === 'tool_progress' && parsed.message) {
@@ -552,18 +575,35 @@ function MobileConversationInner({ id }: { id: string }) {
                 }
               } catch { /* not JSON, fall through */ }
             }
-            const isImageTag = /^<\/?image_(generating|result)[\s>]/.test(parsed.message);
-            if (isImageTool && isImageTag) {
-              // Buffer image tags to emit AFTER closing </tool>
-              imageTagBuffer += `${parsed.message}\n`;
+            if (pipelineMode) {
+              const phase = parsePhaseMarker(parsed.message);
+              if (phase) {
+                if (pipelinePhaseOpen) rawAccum += '</tool>';
+                rawAccum += `<tool name="${phase.icon}" label="${sanitizeAttr(phase.label)}">`;
+                pipelinePhaseOpen = true;
+              } else if (pipelinePhaseOpen) {
+                // Strip <item> wrapper if server already added it
+                const inner = parsed.message.replace(/^<item>(.*)<\/item>$/, '$1');
+                rawAccum += `<item>${sanitizeContent(inner)}</item>\n`;
+              }
             } else {
-              rawAccum += `${isImageTag ? parsed.message : sanitizeContent(parsed.message)}\n`;
+              const isImageTag = /^<\/?image_(generating|result)[\s>]/.test(parsed.message);
+              if (isImageTool && isImageTag) {
+                imageTagBuffer += `${parsed.message}\n`;
+              } else {
+                rawAccum += `${isImageTag ? parsed.message : sanitizeContent(parsed.message)}\n`;
+              }
             }
             pushRaw(rawAccum + (isImageTool ? imageTagBuffer : ''));
             scrollToBottom();
           } else if (parsed.type === 'tool_result') {
-            rawAccum += '</tool>';
-            // Flush buffered image tags AFTER closing </tool>
+            if (pipelineMode) {
+              if (pipelinePhaseOpen) rawAccum += '</tool>';
+              pipelinePhaseOpen = false;
+              pipelineMode = false;
+            } else {
+              rawAccum += '</tool>';
+            }
             if (imageTagBuffer) {
               rawAccum += imageTagBuffer;
               imageTagBuffer = '';
@@ -575,7 +615,7 @@ function MobileConversationInner({ id }: { id: string }) {
             if (f) {
               setMessages((prev) => prev.map((m) => m.id !== assistantId ? m : {
                 ...m,
-                file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0 },
+                file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0, ...(f.previewUrl ? { previewUrl: f.previewUrl } : {}) },
               }));
             }
           } else if (parsed.type === 'title_update' && parsed.title) {
@@ -586,7 +626,7 @@ function MobileConversationInner({ id }: { id: string }) {
               setMessages((prev) => prev.map((m) => m.id !== assistantId ? m : {
                 ...m,
                 taskDone: true,
-                file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0 },
+                file: { fileName: f.name, downloadUrl: f.url, fileSize: f.size ?? 0, ...(f.previewUrl ? { previewUrl: f.previewUrl } : {}) },
               }));
             }
           }
@@ -600,7 +640,11 @@ function MobileConversationInner({ id }: { id: string }) {
         )
       );
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Mark the partial message as done (not streaming)
+        setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, streaming: false } : m));
+        return;
+      }
       console.error('Chat error:', err);
       const errText = 'Sorry, something went wrong. Please try again.';
       setMessages((prev) =>
@@ -965,7 +1009,14 @@ function MobileConversationInner({ id }: { id: string }) {
               className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px] no-focus-ring resize-none leading-relaxed overflow-y-auto"
               style={{ maxHeight: 120 }}
             />
-            {(input.trim() || attachments.length > 0) ? (
+            {isStreaming ? (
+              <button
+                className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
+                onClick={handleStop}
+              >
+                <Square size={14} fill="currentColor" strokeWidth={0} />
+              </button>
+            ) : (input.trim() || attachments.length > 0) ? (
               <button
                 className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
                 onClick={() => handleSend()}
