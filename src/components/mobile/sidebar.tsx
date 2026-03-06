@@ -21,7 +21,6 @@ import {
   Cable,
   Download,
   X,
-  ChevronLeft,
   SquarePen,
   Sun,
   Monitor,
@@ -670,8 +669,26 @@ function GalleryLightbox({
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const touchStartX = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (dx > 60 && index > 0) onPrev();
+    else if (dx < -60 && index < total - 1) onNext();
+  };
+
   return (
-    <div className="absolute inset-0 z-[60] flex flex-col bg-[var(--bg-page)]">
+    <div
+      className="absolute inset-0 z-[60] flex flex-col bg-[var(--bg-page)]"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <div className="flex items-center justify-between px-4 py-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
         <button onClick={onClose} className="p-2 -ml-2"><X size={22} className="text-[var(--text-secondary)]" /></button>
         <span className="text-[13px] text-[var(--text-subtle)]">{index + 1} / {total}</span>
@@ -681,17 +698,7 @@ function GalleryLightbox({
           </a>
         )}
       </div>
-      <div className="flex-1 flex items-center justify-center relative px-4">
-        {index > 0 && (
-          <button onClick={onPrev} className="absolute left-2 z-10 p-2 rounded-full bg-[var(--overlay)]">
-            <ChevronLeft size={22} className="text-[var(--text-primary)]" />
-          </button>
-        )}
-        {index < total - 1 && (
-          <button onClick={onNext} className="absolute right-2 z-10 p-2 rounded-full bg-[var(--overlay)]">
-            <ChevronRight size={22} className="text-[var(--text-primary)]" />
-          </button>
-        )}
+      <div className="flex-1 flex items-center justify-center px-4">
         {image.url && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={image.url} alt={image.prompt ?? 'Generated image'} className="max-w-full max-h-full rounded-xl object-contain" />
