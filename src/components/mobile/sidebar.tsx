@@ -21,6 +21,7 @@ import {
   GalleryHorizontalEnd,
   Cable,
   Download,
+  Share2,
   X,
   SquarePen,
   Sun,
@@ -672,12 +673,89 @@ function GalleryLightbox({
   index,
   onClose,
   onChangeIndex,
+  onDelete,
 }: {
   images: GalleryImageItem[];
   index: number;
   onClose: () => void;
   onChangeIndex: (i: number) => void;
+  onDelete: (id: string) => Promise<void>;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!currImg?.url || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(currImg.url);
+      const blob = await res.blob();
+      const fileName = currImg.fileName ?? 'image.png';
+
+      // Try the File System Access API first (Chrome on Android)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const ext = fileName.split('.').pop() ?? 'png';
+          const mimeType = blob.type || 'image/png';
+          const handle = await (window as unknown as { showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
+            suggestedName: fileName,
+            types: [{ description: 'Image', accept: { [mimeType]: [`.${ext}`] } }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          setSaving(false);
+          return;
+        } catch (e) {
+          // User cancelled or API unavailable — fall through
+          if ((e as DOMException).name === 'AbortError') { setSaving(false); return; }
+        }
+      }
+
+      // Fallback: create a temporary link and trigger download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to save image:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!currImg?.url) return;
+    try {
+      const res = await fetch(currImg.url);
+      const blob = await res.blob();
+      const fileName = currImg.fileName ?? 'image.png';
+      const file = new File([blob], fileName, { type: blob.type || 'image/png' });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: currImg.prompt ?? 'Generated image',
+        });
+      } else {
+        // Fallback: share URL only
+        await navigator.share({
+          title: currImg.prompt ?? 'Generated image',
+          url: window.location.origin + currImg.url,
+        });
+      }
+    } catch (err) {
+      // User cancelled share — ignore AbortError
+      if ((err as DOMException).name !== 'AbortError') {
+        console.error('Failed to share image:', err);
+      }
+    }
+  };
   const total = images.length;
   const prevImg = index > 0 ? images[index - 1] : null;
   const currImg = images[index];
@@ -772,11 +850,7 @@ function GalleryLightbox({
           <X size={22} className="text-[var(--text-secondary)]" />
         </button>
         <span className="text-[13px] text-[var(--text-subtle)]">{index + 1} / {total}</span>
-        {currImg?.url ? (
-          <a href={currImg.url} download={currImg.fileName ?? 'image.png'} className="p-2 -mr-2">
-            <Download size={20} className="text-[var(--text-secondary)]" />
-          </a>
-        ) : <div className="w-10" />}
+        <div className="w-10" />
       </div>
 
       {/* Image area — 3 absolutely-positioned slots */}
@@ -815,59 +889,132 @@ function GalleryLightbox({
           )}
         </div>
 
-        {/* Prev arrow */}
-        {prevImg && (
-          <button
-            onClick={() => navigate('prev')}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full transition-opacity active:opacity-60"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
-          >
-            <ChevronLeft size={20} className="text-[var(--text-primary)]" />
-          </button>
-        )}
-        {/* Next arrow */}
-        {nextImg && (
-          <button
-            onClick={() => navigate('next')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full transition-opacity active:opacity-60"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
-          >
-            <ChevronRight size={20} className="text-[var(--text-primary)]" />
-          </button>
-        )}
       </div>
 
-      {/* Dots + caption */}
+      {/* Dots + caption + actions */}
       <div className="px-4 flex-shrink-0" style={{ paddingTop: 12, paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-        {/* Dot indicators */}
+        {/* Navigation row: ← dots → always at fixed position */}
         {total > 1 && (
-          <div className="flex justify-center items-center gap-[5px] mb-3">
-            {Array.from({ length: dotCount }, (_, i) => {
-              const dotIdx = dotWindowStart + i;
-              const isActive = dotIdx === index;
-              return (
-                <button
-                  key={dotIdx}
-                  onClick={() => !animatingRef.current && onChangeIndex(dotIdx)}
-                  className="transition-all duration-200"
-                  style={{
-                    width: isActive ? 18 : 6,
-                    height: 6,
-                    borderRadius: 3,
-                    background: isActive ? 'var(--text-primary)' : 'var(--text-subtle)',
-                    opacity: isActive ? 1 : 0.35,
-                    flexShrink: 0,
-                  }}
-                />
-              );
-            })}
+          <div className="flex items-center justify-between mb-3">
+            {/* Prev arrow — always takes up space to keep dots centered */}
+            <button
+              onClick={() => navigate('prev')}
+              disabled={!prevImg}
+              className="p-2 rounded-full transition-opacity active:opacity-60 disabled:opacity-0"
+              style={{ background: prevImg ? 'var(--bg-elevated)' : 'transparent', border: prevImg ? '1px solid var(--border-subtle)' : 'none' }}
+            >
+              <ChevronLeft size={20} className="text-[var(--text-primary)]" />
+            </button>
+
+            {/* Dots */}
+            <div className="flex items-center gap-[5px]">
+              {Array.from({ length: dotCount }, (_, i) => {
+                const dotIdx = dotWindowStart + i;
+                const isActive = dotIdx === index;
+                return (
+                  <button
+                    key={dotIdx}
+                    onClick={() => !animatingRef.current && onChangeIndex(dotIdx)}
+                    className="transition-all duration-200"
+                    style={{
+                      width: isActive ? 18 : 6,
+                      height: 6,
+                      borderRadius: 3,
+                      background: isActive ? 'var(--text-primary)' : 'var(--text-subtle)',
+                      opacity: isActive ? 1 : 0.35,
+                      flexShrink: 0,
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Next arrow */}
+            <button
+              onClick={() => navigate('next')}
+              disabled={!nextImg}
+              className="p-2 rounded-full transition-opacity active:opacity-60 disabled:opacity-0"
+              style={{ background: nextImg ? 'var(--bg-elevated)' : 'transparent', border: nextImg ? '1px solid var(--border-subtle)' : 'none' }}
+            >
+              <ChevronRight size={20} className="text-[var(--text-primary)]" />
+            </button>
           </div>
         )}
         {currImg?.prompt && (
           <p className="text-[14px] text-[var(--text-primary)] leading-relaxed mb-1 line-clamp-3">{currImg.prompt}</p>
         )}
-        <p className="text-[12px] text-[var(--text-placeholder)]">{formatGalleryDate(currImg?.createdAt ?? '')}</p>
+        <p className="text-[12px] text-[var(--text-placeholder)] mb-4">{formatGalleryDate(currImg?.createdAt ?? '')}</p>
+
+        {/* Action buttons */}
+        <div className="flex items-center justify-center gap-6">
+          <button
+            onClick={handleSave}
+            disabled={saving || !currImg?.url}
+            className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity disabled:opacity-40"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: 'var(--bg-tertiary)' }}>
+              <Download size={20} className="text-[var(--text-primary)]" />
+            </div>
+            <span className="text-[11px] text-[var(--text-secondary)]">{saving ? 'Saving...' : 'Save'}</span>
+          </button>
+          <button
+            onClick={handleShare}
+            disabled={!currImg?.url}
+            className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity disabled:opacity-40"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: 'var(--bg-tertiary)' }}>
+              <Share2 size={20} className="text-[var(--text-primary)]" />
+            </div>
+            <span className="text-[11px] text-[var(--text-secondary)]">Share</span>
+          </button>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: 'var(--bg-tertiary)' }}>
+              <Trash2 size={20} className="text-red-500" />
+            </div>
+            <span className="text-[11px] text-red-500">Delete</span>
+          </button>
+        </div>
       </div>
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => !deleting && setConfirmDelete(false)}>
+          <div
+            className="mx-8 w-full max-w-[300px] rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-elevated)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 pt-5 pb-4 text-center">
+              <p className="text-[17px] font-semibold text-[var(--text-primary)] mb-1">Delete Image</p>
+              <p className="text-[14px] text-[var(--text-secondary)]">This image will be permanently deleted.</p>
+            </div>
+            <div className="flex border-t border-[var(--border-default)]">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="flex-1 py-3.5 text-[16px] text-blue-500 font-medium border-r border-[var(--border-default)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setDeleting(true);
+                  await onDelete(currImg.id);
+                  setDeleting(false);
+                  setConfirmDelete(false);
+                }}
+                disabled={deleting}
+                className="flex-1 py-3.5 text-[16px] text-red-500 font-semibold disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -902,6 +1049,9 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
     setSelectedIds(new Set());
   };
 
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+
   const handleDelete = async () => {
     if (selectedIds.size === 0) return;
     setDeleting(true);
@@ -914,12 +1064,81 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
       if (res.ok) {
         setImages((prev) => prev.filter((img) => !selectedIds.has(img.id)));
         setTotal((prev) => prev - selectedIds.size);
+        setConfirmBulkDelete(false);
         exitSelectMode();
       }
     } catch (err) {
       console.error('Failed to delete images:', err);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleBulkSave = async () => {
+    if (selectedIds.size === 0 || bulkSaving) return;
+    setBulkSaving(true);
+    try {
+      const selected = images.filter((img) => selectedIds.has(img.id) && img.url);
+      for (const img of selected) {
+        const res = await fetch(img.url!);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = img.fileName ?? 'image.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Failed to save images:', err);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkShare = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const selected = images.filter((img) => selectedIds.has(img.id) && img.url);
+      const files: File[] = [];
+      for (const img of selected) {
+        const res = await fetch(img.url!);
+        const blob = await res.blob();
+        files.push(new File([blob], img.fileName ?? 'image.png', { type: blob.type || 'image/png' }));
+      }
+      if (navigator.canShare?.({ files })) {
+        await navigator.share({ files, title: `${files.length} image${files.length !== 1 ? 's' : ''}` });
+      } else if (files.length === 1) {
+        await navigator.share({ title: 'Image', url: window.location.origin + selected[0].url });
+      }
+    } catch (err) {
+      if ((err as DOMException).name !== 'AbortError') {
+        console.error('Failed to share images:', err);
+      }
+    }
+  };
+
+  const handleDeleteSingle = async (id: string) => {
+    try {
+      const res = await fetch('/api/images', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      if (res.ok) {
+        const newImages = images.filter((img) => img.id !== id);
+        setImages(newImages);
+        setTotal((prev) => prev - 1);
+        if (newImages.length === 0) {
+          setLightboxIndex(null);
+        } else if (lightboxIndex !== null && lightboxIndex >= newImages.length) {
+          setLightboxIndex(newImages.length - 1);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete image:', err);
     }
   };
 
@@ -1019,20 +1238,72 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
         )}
       </div>
 
-      {/* Delete footer */}
+      {/* Select mode action bar */}
       {selectMode && selectedIds.size > 0 && (
         <div
-          className="flex-shrink-0 border-t border-[var(--border-default)] px-4 py-3 flex items-center justify-center"
+          className="flex-shrink-0 border-t border-[var(--border-default)] px-6 py-3 flex items-center justify-center gap-8"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
         >
           <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-500 text-white text-[15px] font-medium active:bg-red-600 transition-colors disabled:opacity-50"
+            onClick={handleBulkSave}
+            disabled={bulkSaving}
+            className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity disabled:opacity-40"
           >
-            <Trash2 size={18} />
-            {deleting ? 'Deleting...' : `Delete ${selectedIds.size} image${selectedIds.size !== 1 ? 's' : ''}`}
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: 'var(--bg-tertiary)' }}>
+              <Download size={20} className="text-[var(--text-primary)]" />
+            </div>
+            <span className="text-[11px] text-[var(--text-secondary)]">{bulkSaving ? 'Saving...' : 'Save'}</span>
           </button>
+          <button
+            onClick={handleBulkShare}
+            className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: 'var(--bg-tertiary)' }}>
+              <Share2 size={20} className="text-[var(--text-primary)]" />
+            </div>
+            <span className="text-[11px] text-[var(--text-secondary)]">Share</span>
+          </button>
+          <button
+            onClick={() => setConfirmBulkDelete(true)}
+            className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: 'var(--bg-tertiary)' }}>
+              <Trash2 size={20} className="text-red-500" />
+            </div>
+            <span className="text-[11px] text-red-500">Delete</span>
+          </button>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation */}
+      {confirmBulkDelete && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => !deleting && setConfirmBulkDelete(false)}>
+          <div
+            className="mx-8 w-full max-w-[300px] rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-elevated)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 pt-5 pb-4 text-center">
+              <p className="text-[17px] font-semibold text-[var(--text-primary)] mb-1">Delete {selectedIds.size} Image{selectedIds.size !== 1 ? 's' : ''}</p>
+              <p className="text-[14px] text-[var(--text-secondary)]">{selectedIds.size === 1 ? 'This image' : 'These images'} will be permanently deleted.</p>
+            </div>
+            <div className="flex border-t border-[var(--border-default)]">
+              <button
+                onClick={() => setConfirmBulkDelete(false)}
+                disabled={deleting}
+                className="flex-1 py-3.5 text-[16px] text-blue-500 font-medium border-r border-[var(--border-default)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-3.5 text-[16px] text-red-500 font-semibold disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1043,6 +1314,7 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onChangeIndex={(i) => setLightboxIndex(i)}
+          onDelete={handleDeleteSingle}
         />
       )}
     </div>
