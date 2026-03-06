@@ -335,7 +335,8 @@ export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onCl
       <div className="w-[85%] max-w-[340px] bg-[var(--bg-page)] h-full relative z-10 flex flex-col p-4 pt-10 animate-slide-right shadow-2xl">
 
         {/* Logo */}
-        <div className="mb-5 cursor-pointer" onClick={() => { onClose(); router.push('/m/chat'); }}>
+        <div className="mb-5">
+        <span className="inline-block cursor-pointer" onClick={() => { onClose(); router.push('/m/chat'); }}>
           <Image
             src={resolvedTheme === 'dark' ? '/elk-logo-dark.png' : '/elk-logo-black.png'}
             alt="ELK"
@@ -343,6 +344,7 @@ export function MobileSidebar({ onClose, onOpenSettings, onOpenGallery }: { onCl
             height={22}
             className="object-contain"
           />
+        </span>
         </div>
 
         {/* Top bar: Search + New Chat */}
@@ -940,10 +942,7 @@ function GalleryLightbox({
             </button>
           </div>
         )}
-        {currImg?.prompt && (
-          <p className="text-[14px] text-[var(--text-primary)] leading-relaxed mb-1 line-clamp-3">{currImg.prompt}</p>
-        )}
-        <p className="text-[12px] text-[var(--text-placeholder)] mb-4">{formatGalleryDate(currImg?.createdAt ?? '')}</p>
+        <p className="text-[13px] text-[var(--text-placeholder)] mb-4">{formatGalleryDate(currImg?.createdAt ?? '')}</p>
 
         {/* Action buttons */}
         <div className="flex items-center justify-center gap-6">
@@ -1211,18 +1210,35 @@ export function MobileGalleryOverlay({ onClose, onOpenSidebar }: { onClose: () =
           </div>
         ) : (
           <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}>
-            <div className="grid grid-cols-3 gap-1 p-1 pt-2">
-              {images.map((image, idx) => (
-                <GalleryImageCard
-                  key={image.id}
-                  image={image}
-                  onClick={() => setLightboxIndex(idx)}
-                  selectMode={selectMode}
-                  selected={selectedIds.has(image.id)}
-                  onToggleSelect={() => toggleSelect(image.id)}
-                />
-              ))}
-            </div>
+            {(() => {
+              const groups: { date: string; items: { image: GalleryImageItem; idx: number }[] }[] = [];
+              images.forEach((image, idx) => {
+                const date = formatGalleryDate(image.createdAt);
+                const last = groups[groups.length - 1];
+                if (last && last.date === date) {
+                  last.items.push({ image, idx });
+                } else {
+                  groups.push({ date, items: [{ image, idx }] });
+                }
+              });
+              return groups.map((group) => (
+                <div key={group.date}>
+                  <p className="px-3 pt-3 pb-1.5 text-[13px] font-medium text-[var(--text-secondary)]">{group.date}</p>
+                  <div className="grid grid-cols-3 gap-1 px-1">
+                    {group.items.map(({ image, idx }) => (
+                      <GalleryImageCard
+                        key={image.id}
+                        image={image}
+                        onClick={() => setLightboxIndex(idx)}
+                        selectMode={selectMode}
+                        selected={selectedIds.has(image.id)}
+                        onToggleSelect={() => toggleSelect(image.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ));
+            })()}
             {images.length < total && (
               <div className="px-4 mt-3">
                 <button
