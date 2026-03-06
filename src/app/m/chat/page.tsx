@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,6 +20,7 @@ import {
   Camera,
   Atom,
   FileIcon,
+  Square,
 } from 'lucide-react';
 import { MobileSidebar, MobileSettingsOverlay, MobileGalleryOverlay } from '@/components/mobile/sidebar';
 import { useTheme } from '@/components/theme-provider';
@@ -32,6 +33,15 @@ const SpeakIcon = () => (
     <path d="M16.5 5.5a10 10 0 0 1 0 13" />
   </svg>
 );
+
+interface HomepageAttachment {
+  file: File;
+  preview: string; // base64 without data: prefix (for display)
+  mediaType: string;
+  type: 'image' | 'file';
+  name: string;
+  size: number;
+}
 
 type ModeId = 'agent' | 'board';
 
@@ -59,10 +69,61 @@ export default function MobileChatHome() {
   const [selectedMode, setSelectedMode] = useState<ModeId>('agent');
   const [modeSelectOpen, setModeSelectOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState<ChipId | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<HomepageAttachment[]>([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [previewImage, setPreviewImage] = useState<{ src: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [animKey] = useState(() => Date.now());
+  useEffect(() => { setMounted(true); }, []);
+
+  /* ── Voice input ──────────────────────────────────────────── */
+  type AnyRecognition = { continuous: boolean; interimResults: boolean; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null; start: () => void; stop: () => void; };
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef<AnyRecognition | null>(null);
+  const finalTranscriptRef = useRef('');
+
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>;
+    setVoiceSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
+  }, []);
+
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+
+  const handleVoiceTap = useCallback(() => {
+    if (isRecording) { recognitionRef.current?.stop(); return; }
+    const w = window as unknown as Record<string, new () => AnyRecognition>;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    const baseText = input;
+    finalTranscriptRef.current = '';
+    recognition.onresult = (e: any) => {
+      let newFinals = '';
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) newFinals += t;
+        else interim += t;
+      }
+      finalTranscriptRef.current += newFinals;
+      setInput(baseText + (baseText && finalTranscriptRef.current ? ' ' : '') + finalTranscriptRef.current + interim);
+    };
+    recognition.onend = () => { setIsRecording(false); recognitionRef.current = null; };
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'no-speech') console.error('[voice] error:', e.error);
+      setIsRecording(false); recognitionRef.current = null;
+    };
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+  }, [isRecording, input]);
+  /* ─────────────────────────────────────────────────────────── */
 
   const activeMode = MODES.find((m) => m.id === selectedMode)!;
   const activeChip = selectedChip ? CHIPS.find((c) => c.id === selectedChip) : null;
@@ -71,7 +132,7 @@ export default function MobileChatHome() {
   const inputHeaderLabel = selectedMode === 'board' ? 'Board' : (activeChip?.label || 'Agent');
   const InputHeaderIcon = selectedMode === 'board' ? Users : Bot;
 
-  const logoSrc = resolvedTheme === 'dark' ? '/hyprnova-mark.png' : '/hyprnova-mark-black.png';
+  const logoSrc = mounted ? (resolvedTheme === 'dark' ? '/elk-logo-dark.png' : '/elk-logo-light.png') : '/elk-logo-dark.png';
 
   const [greeting, setGreeting] = useState('today');
   useEffect(() => {
@@ -92,11 +153,39 @@ export default function MobileChatHome() {
     }
   };
 
+  const handleFileSelect = async (files: File[]) => {
+    try {
+      const newAtts = await Promise.all(files.map(async (f) => {
+        const preview = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(f);
+        });
+        return {
+          file: f,
+          preview,
+          mediaType: f.type || 'application/octet-stream',
+          type: (f.type.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+          name: f.name,
+          size: f.size,
+        };
+      }));
+      setAttachments((prev) => [...prev, ...newAtts]);
+    } catch (err) {
+      console.error('[handleFileSelect] Failed to read file:', err);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files;
     if (selected && selected.length > 0) {
-      setIsPlusMenuOpen(false);
-      setFiles((prev) => [...prev, ...Array.from(selected)]);
+      setIsPlusMenuOpen(false); // close menu synchronously
+      handleFileSelect(Array.from(selected));
     }
     if (e.target) e.target.value = '';
   };
@@ -147,15 +236,23 @@ export default function MobileChatHome() {
 
   const handleSend = async () => {
     const msg = input.trim();
-    if (!msg && files.length === 0) return;
+    if (!msg && attachments.length === 0) return;
 
-    // Upload files first if any
+    // Always clear any stale pending attachments from a previous send first
+    sessionStorage.removeItem('pendingAttachments');
+
+    // Snapshot current attachments before clearing state
+    const currentAttachments = attachments;
+    setAttachments([]);
+    setFileInputKey((k) => k + 1); // force file input remount so browser cache is cleared
+
+    // Upload files first if any (use attachment.file for actual upload)
     const fileIds: string[] = [];
-    if (files.length > 0) {
-      for (const file of files) {
+    if (currentAttachments.length > 0) {
+      for (const att of currentAttachments) {
         try {
           const formData = new FormData();
-          formData.append('file', file);
+          formData.append('file', att.file);
           const res = await fetch('/api/upload', { method: 'POST', body: formData });
           if (res.ok) {
             const record = await res.json();
@@ -167,7 +264,15 @@ export default function MobileChatHome() {
       }
     }
 
-    setFiles([]);
+    // Store base64 previews in sessionStorage so the chat page can send them
+    // as multimodal vision content (the fileIds upload only adds text metadata)
+    const imageAtts = currentAttachments.filter((a) => a.type === 'image');
+    if (imageAtts.length > 0) {
+      sessionStorage.setItem('pendingAttachments', JSON.stringify(
+        imageAtts.map((a) => ({ data: a.preview, mediaType: a.mediaType, type: a.type, name: a.name, size: a.size }))
+      ));
+    }
+
     createAndNavigate(
       msg || `[Uploaded ${fileIds.length} file(s)]`,
       effectiveMode,
@@ -265,15 +370,23 @@ export default function MobileChatHome() {
 
       {/* Main Content — centered greeting */}
       {!sending && (
-        <div className="flex-1 flex flex-col items-center justify-center pb-28 px-6">
-          <img
+        <div key={animKey} className="flex-1 flex flex-col items-center justify-center pb-28 px-6">
+          <motion.img
             src={logoSrc}
             alt="ELK"
-            className="w-[52px] h-[52px] object-contain mb-5"
+            className="w-[80px] h-[80px] object-contain mb-0"
+            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
           />
-          <p className="text-[28px] font-normal text-[var(--text-primary)] text-center leading-snug">
+          <motion.p
+            className="text-[28px] font-normal text-[var(--text-primary)] text-center leading-snug"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.25, ease: [0.23, 1, 0.32, 1] }}
+          >
             How can I help you<br />{greeting}?
-          </p>
+          </motion.p>
         </div>
       )}
 
@@ -387,8 +500,9 @@ export default function MobileChatHome() {
           </motion.div>
         )}
 
-        {/* Hidden file inputs */}
+        {/* Hidden file inputs — keyed so remounting clears the browser's file cache */}
         <input
+          key={`file-${fileInputKey}`}
           type="file"
           ref={fileInputRef}
           className="hidden"
@@ -396,6 +510,7 @@ export default function MobileChatHome() {
           multiple
         />
         <input
+          key={`camera-${fileInputKey}`}
           type="file"
           ref={cameraInputRef}
           className="hidden"
@@ -443,57 +558,105 @@ export default function MobileChatHome() {
             </>
           )}
 
-          {/* File chips */}
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
-              {files.map((f, i) => (
-                <span
-                  key={`${f.name}-${i}`}
-                  className="inline-flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-full px-2.5 py-1 text-[12px] text-[var(--text-primary)]"
-                >
-                  {f.name.length > 18 ? f.name.slice(0, 15) + '...' : f.name}
+          {/* Attachment thumbnails preview row */}
+          {attachments.length > 0 && (
+            <div className="flex gap-2 px-3 pt-2.5 overflow-x-auto scrollbar-hide">
+              {attachments.map((att, i) => (
+                <div key={i} className="relative flex-shrink-0">
+                  {att.type === 'image' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`data:${att.mediaType};base64,${att.preview}`}
+                      alt={att.name}
+                      className="w-[72px] h-[72px] object-cover rounded-lg cursor-pointer"
+                      onClick={() => setPreviewImage({ src: `data:${att.mediaType};base64,${att.preview}`, name: att.name })}
+                    />
+                  ) : (
+                    <div className="w-[72px] h-[72px] flex flex-col items-center justify-center bg-[var(--bg-elevated)] rounded-lg gap-1">
+                      <FileIcon size={22} strokeWidth={1.5} className="text-[var(--text-secondary)]" />
+                      <span className="text-[9px] text-[var(--text-placeholder)] px-1 text-center truncate w-full leading-tight">{att.name.slice(0, 12)}</span>
+                    </div>
+                  )}
                   <button
-                    onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="text-[var(--text-placeholder)] hover:text-[var(--text-primary)]"
+                    onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[var(--bg-page)] border border-[var(--border-strong)] rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   >
                     <X size={10} strokeWidth={2.5} />
                   </button>
-                </span>
+                </div>
               ))}
             </div>
           )}
 
           {/* Input row */}
           <div className="flex items-center gap-3 px-2 py-1.5">
-            <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]" onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}>
-              <PlusCircle size={22} />
-            </button>
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Ask ELK anything"
-              className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px]"
-              disabled={sending}
-            />
-            {input.trim() ? (
+
+            {/* Left: stop (recording) or + (normal) */}
+            {isRecording ? (
               <button
-                className="p-1.5 bg-[var(--send-btn-bg)] rounded-full text-[var(--send-btn-icon)] transition-colors"
-                onClick={handleSend}
+                onClick={handleVoiceTap}
+                className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-elevated)] text-[var(--text-primary)] active:opacity-70 transition-opacity"
               >
-                <ArrowUp size={18} strokeWidth={2.5} />
+                <Square size={13} fill="currentColor" strokeWidth={0} />
               </button>
             ) : (
-              <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]">
+              <button className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)]" onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}>
+                <PlusCircle size={22} />
+              </button>
+            )}
+
+            {/* Middle: waveform (recording) or text input (normal) */}
+            {isRecording ? (
+              <div className="flex-1 flex items-center gap-2 overflow-hidden">
+                {input.trim() ? (
+                  <span className="text-[15px] text-[var(--text-primary)] truncate">{input}</span>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-[3px]" style={{ height: 20 }}>
+                      {[0.35, 0.65, 1, 0.55, 0.85, 0.45, 0.75, 0.35, 0.65, 1, 0.55, 0.85].map((h, i) => (
+                        <div key={i} className="rounded-full bg-[var(--text-placeholder)]"
+                          style={{ width: 2, height: `${h * 18}px`, animation: 'voiceBar 1.1s ease-in-out infinite', animationDelay: `${i * 0.09}s` }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[15px] text-[var(--text-placeholder)]">Transcribing...</span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                }}
+                placeholder="Ask ELK anything"
+                className="flex-1 bg-transparent text-[var(--text-primary)] outline-none placeholder-[var(--text-placeholder)] text-[15px]"
+                disabled={sending}
+              />
+            )}
+
+            {/* Right: mic + send */}
+            {voiceSupported && !isRecording && (
+              <button
+                onClick={handleVoiceTap}
+                className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)] active:text-[var(--text-primary)] transition-colors flex-shrink-0"
+              >
                 <SpeakIcon />
               </button>
             )}
+            <button
+              onClick={() => { if (isRecording) { recognitionRef.current?.stop(); } handleSend(); }}
+              disabled={!isRecording && !input.trim() && attachments.length === 0}
+              className="p-1.5 rounded-full transition-colors flex-shrink-0"
+              style={{
+                background: (isRecording || input.trim() || attachments.length > 0) ? 'var(--send-btn-bg)' : 'var(--surface-glass)',
+                color: (isRecording || input.trim() || attachments.length > 0) ? 'var(--send-btn-icon)' : 'var(--text-tertiary)',
+              }}
+            >
+              <ArrowUp size={18} strokeWidth={2.5} />
+            </button>
           </div>
         </div>
       </motion.div>
@@ -516,6 +679,28 @@ export default function MobileChatHome() {
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenGallery={() => setGalleryOpen(true)}
         />
+      )}
+
+      {/* Attachment image lightbox */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white p-2"
+            onClick={() => setPreviewImage(null)}
+          >
+            <X size={24} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewImage.src}
+            alt={previewImage.name}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </>
   );

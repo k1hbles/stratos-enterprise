@@ -1138,7 +1138,7 @@ function MobileConversationInner({ id }: { id: string }) {
                     onClick={handleVoiceTap}
                     className="p-1.5 text-[var(--text-subtle)] hover:text-[var(--text-primary)] active:text-[var(--text-primary)] transition-colors flex-shrink-0"
                   >
-                    <Mic size={20} />
+                    <SpeakIcon />
                   </button>
                 )}
                 {/* Send — always present; enabled when input or attachments */}
