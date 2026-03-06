@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { PageRemounter } from './PageRemounter';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -37,7 +38,7 @@ export default function MobileLayout({
           paddingTop: 'env(safe-area-inset-top)',
         }}
       >
-        {children}
+        <PageRemounter>{children}</PageRemounter>
       </div>
     </div>
   );
